@@ -49,10 +49,13 @@ export function buildCsv(columns: Column[], rows: CostRow[]): string {
   return lines.join(CRLF) + CRLF;
 }
 
-/** `cloud0-cost-<scope>-<from>-<to>.csv` with filename-unsafe characters replaced. */
-export function csvFilename(scope: Scope, from: WeekID, to: WeekID): string {
+/**
+ * `cloud0-cost-<scope>-<from>-<to>-<CURRENCY>.csv` with filename-unsafe characters replaced.
+ * CSV cells are plain numbers in the configured currency; the code lives in the filename suffix.
+ */
+export function csvFilename(scope: Scope, from: WeekID, to: WeekID, currency: string): string {
   const safeScope = scope.replace(/[^A-Za-z0-9._-]/g, '_');
-  return `cloud0-cost-${safeScope}-${from}-${to}.csv`;
+  return `cloud0-cost-${safeScope}-${from}-${to}-${currency.toUpperCase()}.csv`;
 }
 
 /** Browser-only: offers `text` as a file download. */

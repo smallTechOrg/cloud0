@@ -40,9 +40,13 @@ func MetricGroups() []MetricGroupSpec {
 			{MInboundGB, "Inbound GB", "GB"},
 		}},
 		{GroupCloudRun, "Cloud Run", []MetricColumn{
-			{MServiceMemGiBs, "Memory (GiB-s)", "GiB-s"},
+			{MServiceMemGiBs, "Memory total (GiB-s)", "GiB-s"},
+			{MServiceMemActiveGiBs, "Active memory (GiB-s)", "GiB-s"},
+			{MServiceMemIdleGiBs, "Idle (min-instance) memory (GiB-s)", "GiB-s"},
 			{MRequests, "Requests", "count"},
-			{MServiceCPUSec, "CPU (vCPU-s)", "vCPU-s"},
+			{MServiceCPUSec, "CPU total (vCPU-s)", "vCPU-s"},
+			{MServiceCPUActiveSec, "Active CPU (vCPU-s)", "vCPU-s"},
+			{MServiceCPUIdleSec, "Idle (min-instance) CPU (vCPU-s)", "vCPU-s"},
 			{MEgressInterGB, "Egress intercontinental GB", "GB"},
 		}},
 		{GroupGCS, "Cloud Storage", []MetricColumn{

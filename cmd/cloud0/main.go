@@ -262,13 +262,22 @@ func serve() int {
 	}
 	runner.Collectors = refresh.StandardCollectors(phase2)
 
+	// Log sampling for GET /errors/samples; failure leaves the endpoint answering 503.
+	var samples errorsrc.LogEntrySource
+	if sr, closeFn, err := errorsrc.NewSampleReader(ctx, cfg.Projects); err != nil {
+		logger.Error("logging.samples_client", slog.String("error", err.Error()))
+	} else {
+		defer closeFn()
+		samples = sr
+	}
+
 	bqHealth := httpapi.NewBigQueryHealth(time.Now(), dryErr)
 	if dryErr != nil {
 		f := billing.Classify(dryErr)
 		logger.Error("bigquery.dryrun", slog.String("status", "error"), slog.String("error_code", string(f.Code)), slog.String("message", f.Message), slog.String("fix_hint", f.Hint))
 	}
 
-	deps := httpapi.Deps{Config: cfg, Store: st, Logger: logger, Version: version, Refresh: runner,
+	deps := httpapi.Deps{Config: cfg, Store: st, Logger: logger, Version: version, Refresh: runner, Samples: samples,
 		BigQuery: func() *httpapi.BigQueryHealth { h := bqHealth; return &h }}
 	srv := httpapi.New(deps)
 

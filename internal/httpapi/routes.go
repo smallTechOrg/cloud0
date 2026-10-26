@@ -58,6 +58,7 @@ func registerRoutes(mux *http.ServeMux, deps Deps) {
 	r.handle(http.MethodPut, apiPrefix+"/annotations/{week}", deps.handlePutAnnotation)
 	r.handle(http.MethodGet, apiPrefix+"/metrics/table", deps.handleMetricsTable)
 	r.handle(http.MethodGet, apiPrefix+"/errors/table", deps.handleErrorsTable)
+	r.handle(http.MethodGet, apiPrefix+"/errors/samples", deps.handleErrorSamples)
 	r.handle(http.MethodGet, apiPrefix+"/limits", deps.handleGetLimits)
 	r.handle(http.MethodPut, apiPrefix+"/limits", deps.handlePutLimits)
 	r.handle(http.MethodGet, apiPrefix+"/cost/month", deps.handleCostMonth)

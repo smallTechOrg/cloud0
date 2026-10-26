@@ -69,7 +69,7 @@ func assemble(t *testing.T, in Input) Table {
 }
 
 func baseInput(latest map[isoweek.Week]store.Snapshot, rows map[int64][]store.SnapshotRow) Input {
-	return Input{From: w41, To: w44, Latest: latest, Rows: rows, Thresholds: Thresholds{Pct: 20, AbsUSD: 50}, Scope: store.ScopeAll, Now: now, Settle: settle}
+	return Input{From: w41, To: w44, Latest: latest, Rows: rows, Thresholds: Thresholds{Pct: 20, Abs: 50}, Scope: store.ScopeAll, Now: now, Settle: settle}
 }
 
 func findRow(t *testing.T, tbl Table, w isoweek.Week) Row {
@@ -145,7 +145,7 @@ func TestAssemble_MapsServicesExtrasAndTotalInSheetOrder(t *testing.T) {
 	if len(c) != 13 { // 11 fixed + 1 extra + total
 		t.Errorf("cells has %d entries, want 13: %v", len(c), c)
 	}
-	if tbl.Scope != "all" || tbl.From != "2026-W41" || tbl.To != "2026-W44" || tbl.Thresholds != (Thresholds{Pct: 20, AbsUSD: 50}) || !tbl.GeneratedAt.Equal(now) {
+	if tbl.Scope != "all" || tbl.From != "2026-W41" || tbl.To != "2026-W44" || tbl.Thresholds != (Thresholds{Pct: 20, Abs: 50}) || !tbl.GeneratedAt.Equal(now) {
 		t.Errorf("table meta = %+v", tbl)
 	}
 }
@@ -453,8 +453,8 @@ func TestTable_JSONShapeMatchesAPI(t *testing.T) {
 }
 
 func TestThresholdsFrom_ReadsStoreSettings(t *testing.T) {
-	th := ThresholdsFrom(store.Settings{AnomalyPctThreshold: 12.5, AnomalyAbsThresholdUSD: 7})
-	if th != (Thresholds{Pct: 12.5, AbsUSD: 7}) {
+	th := ThresholdsFrom(store.Settings{AnomalyPctThreshold: 12.5, AnomalyAbsThreshold: 7})
+	if th != (Thresholds{Pct: 12.5, Abs: 7}) {
 		t.Fatalf("th = %+v", th)
 	}
 }

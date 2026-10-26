@@ -73,7 +73,7 @@ func p2Fixture(t *testing.T) *fixture {
 			}},
 		{Name: "errors_cloudrun", ErrorSource: gcpsource.ErrSrcCloudRun, Fetch: func(context.Context, gcpsource.Window) gcpsource.Result {
 			return gcpsource.Result{Source: "errors_cloudrun", Status: gcpsource.StatusOK, Errors: []gcpsource.ErrorRow{
-				{Source: gcpsource.ErrSrcCloudRun, Project: "project-a", Service: "svc-a", C2xx: i64(1000), C3xx: i64(0), C4xx: i64(12), C5xx: i64(1), Provenance: p2prov("errors_cloudrun")},
+				{Source: gcpsource.ErrSrcCloudRun, Project: "project-a", Service: "svc-a", C2xx: i64(1000), C3xx: i64(0), C4xx: i64(12), C5xx: i64(1), ByCode: map[string]int64{"200": 1000, "404": 11, "401": 1, "502": 1}, Provenance: p2prov("errors_cloudrun")},
 				{Source: gcpsource.ErrSrcCloudRun, Project: "project-b", Service: "svc-b", Gap: "no data", Hint: "no requests", Provenance: p2prov("errors_cloudrun")},
 				{Source: gcpsource.ErrSrcErrorReporting, Project: "project-a", Service: "svc-a", Groups: i64(3), Occurrences: i64(40), Provenance: p2prov("errors_cloudrun")},
 			}}
@@ -208,7 +208,7 @@ func TestMetricsTable_GroupsGapsScopeAndLimitLevels(t *testing.T) {
 		t.Fatalf("vm group = %v", vm)
 	}
 	rows := asList(t, vm["rows"])
-	if len(rows) != 2 {
+	if len(rows) != 3 || asMap(t, rows[2])["is_total"] != true || asMap(t, rows[0])["is_total"] != false {
 		t.Fatalf("vm rows = %v", rows)
 	}
 	a := asMap(t, asMap(t, rows[0])["cells"])
@@ -234,7 +234,7 @@ func TestMetricsTable_GroupsGapsScopeAndLimitLevels(t *testing.T) {
 
 	// Failed source → "source failed" with the fix hint, for every project.
 	lg := asList(t, groupByName(t, tbl, "logging")["rows"])
-	if len(lg) != 2 {
+	if len(lg) != 3 {
 		t.Fatalf("logging rows = %v", lg)
 	}
 	c := asMap(t, asMap(t, asMap(t, lg[0])["cells"])["logging_gb"])
@@ -244,7 +244,7 @@ func TestMetricsTable_GroupsGapsScopeAndLimitLevels(t *testing.T) {
 
 	// Errors group derived from the Cloud Run error rows only.
 	er := asList(t, groupByName(t, tbl, "errors")["rows"])
-	if len(er) != 2 {
+	if len(er) != 3 {
 		t.Fatalf("errors rows = %v", er)
 	}
 	e0 := asMap(t, er[0])
@@ -259,7 +259,7 @@ func TestMetricsTable_GroupsGapsScopeAndLimitLevels(t *testing.T) {
 	// Scope filters by project at read time.
 	_, scoped, _ := f.doJSON(t, http.MethodGet, "/api/v1/metrics/table?scope=project-b", "")
 	vmB := asList(t, groupByName(t, scoped, "vm")["rows"])
-	if len(vmB) != 1 || asMap(t, vmB[0])["project"] != "project-b" || len(asList(t, groupByName(t, scoped, "cloudrun")["rows"])) != 0 {
+	if len(vmB) != 2 || asMap(t, vmB[0])["project"] != "project-b" || len(asList(t, groupByName(t, scoped, "cloudrun")["rows"])) != 0 {
 		t.Fatalf("scoped vm = %v", vmB)
 	}
 
@@ -299,7 +299,19 @@ func TestErrorsTable_RowsTotalsScopeAndEmpty(t *testing.T) {
 	if r0["source"] != "cloudrun" || num(r0["c4xx"]) != 12 || r0["groups"] != nil || r0["gap"] != nil || asMap(t, r0["provenance"])["source"] != "errors_cloudrun" {
 		t.Fatalf("row 0 = %v", r0)
 	}
+	bc := asMap(t, r0["by_code"])
+	if num(bc["404"]) != 11 || num(bc["502"]) != 1 {
+		t.Fatalf("by_code = %v", bc)
+	}
+	lu, _ := r0["logs_url"].(string)
+	if !strings.HasPrefix(lu, "https://console.cloud.google.com/logs/query;query=") || !strings.Contains(lu, "svc-a") ||
+		!strings.Contains(lu, "timeRange=2026-10-19T00:00:00.000Z%2F2026-10-26T00:00:00.000Z") || !strings.HasSuffix(lu, "?project=project-a") {
+		t.Fatalf("logs_url = %q", lu)
+	}
 	r1 := asMap(t, rows[1])
+	if r1["logs_url"] != nil || r1["by_code"] != nil {
+		t.Fatalf("gap row must carry no logs_url/by_code: %v", r1)
+	}
 	if r1["c4xx"] != nil || r1["gap"] != "no data" || r1["hint"] != "no requests" {
 		t.Fatalf("row 1 = %v", r1)
 	}
@@ -426,6 +438,10 @@ func TestLimits_GetPutValidationAndMonthToDate(t *testing.T) {
 
 func TestCostMonth_RowsDeltasScopeSummaryAndErrors(t *testing.T) {
 	f := p2Fixture(t)
+	// The seeded default is 20 % / 200 (INR); these fixtures use small amounts, so pin 20 % / 50.
+	if res, _, _ := f.doJSON(t, http.MethodPut, "/api/v1/settings", `{"anomaly_pct_threshold":20,"anomaly_abs_threshold_usd":50}`); res.StatusCode != 200 {
+		t.Fatal("settings PUT failed")
+	}
 
 	// Never fetched: rows without snapshots, summary has_data false.
 	res, empty, _ := f.doJSON(t, http.MethodGet, "/api/v1/cost/month?from=2026-09&to=2026-10", "")
@@ -549,5 +565,116 @@ func TestCostMonth_NoPreviousSnapshotMeansNullDeltas(t *testing.T) {
 	res, body, _ := f.doJSON(t, http.MethodGet, "/api/v1/cost/month?from=2026-09&to=2026-10", "")
 	if res.StatusCode != 200 || asMap(t, asList(t, body["rows"])[0])["snapshot"] != nil {
 		t.Fatalf("body = %v", body)
+	}
+}
+
+func cellVal(t *testing.T, row map[string]any, col string) any {
+	t.Helper()
+	return asMap(t, asMap(t, row["cells"])[col])["value"]
+}
+
+func totalRowOf(t *testing.T, tbl map[string]any, group string) map[string]any {
+	t.Helper()
+	rows := asList(t, groupByName(t, tbl, group)["rows"])
+	last := asMap(t, rows[len(rows)-1])
+	if last["is_total"] != true || last["resource"] != "" || last["project"] != "" {
+		t.Fatalf("%s: last row is not the total row: %v", group, last)
+	}
+	for _, r := range rows[:len(rows)-1] {
+		if asMap(t, r)["is_total"] != false {
+			t.Fatalf("%s: stray total row: %v", group, r)
+		}
+	}
+	return last
+}
+
+func TestMetricsTable_TotalsAndCloudRunActiveIdleMerge(t *testing.T) {
+	f := p2Fixture(t)
+	u := []string{gcpsource.MServiceMemActiveGiBs, gcpsource.MServiceMemIdleGiBs, gcpsource.MServiceCPUActiveSec, gcpsource.MServiceCPUIdleSec, gcpsource.MEgressInterGB}
+	cr := func(res string, cells map[string]gcpsource.Cell) gcpsource.MetricRow {
+		return metricRowOf(gcpsource.GroupCloudRun, "project-a", res, cells)
+	}
+	f.deps.Refresh.Collectors = []refresh.Collector{
+		collector("monitoring_vm", nil,
+			metricRowOf(gcpsource.GroupVM, "project-a", "vm-a", map[string]gcpsource.Cell{gcpsource.MCPU: fcell(10, "%", "monitoring_vm")}),
+			metricRowOf(gcpsource.GroupVM, "project-a", "vm-b", map[string]gcpsource.Cell{gcpsource.MCPU: fcell(30, "%", "monitoring_vm")})),
+		collector("monitoring_cloudrun", nil,
+			cr("svc-a", map[string]gcpsource.Cell{gcpsource.MServiceMemGiBs: fcell(310, "GiB-s", "monitoring_cloudrun"), gcpsource.MRequests: fcell(100, "count", "monitoring_cloudrun")}),
+			cr("svc-b", map[string]gcpsource.Cell{gcpsource.MServiceMemGiBs: fcell(15, "GiB-s", "monitoring_cloudrun"), gcpsource.MRequests: fcell(50, "count", "monitoring_cloudrun")}),
+			cr("", map[string]gcpsource.Cell{gcpsource.MServiceMemGiBs: fcell(325, "GiB-s", "monitoring_cloudrun"), gcpsource.MRequests: fcell(150, "count", "monitoring_cloudrun")})),
+		collector("bigquery_usage", []refresh.Owned{{Group: gcpsource.GroupCloudRun, Columns: u}},
+			cr("svc-a", map[string]gcpsource.Cell{gcpsource.MServiceMemActiveGiBs: fcell(10, "GiB-s", "bigquery_usage"), gcpsource.MServiceMemIdleGiBs: fcell(300, "GiB-s", "bigquery_usage")}),
+			cr("svc-b", map[string]gcpsource.Cell{gcpsource.MServiceMemActiveGiBs: fcell(15, "GiB-s", "bigquery_usage")}),
+			cr("svc-billing-only", map[string]gcpsource.Cell{gcpsource.MServiceMemIdleGiBs: fcell(2, "GiB-s", "bigquery_usage")}),
+			cr("", map[string]gcpsource.Cell{gcpsource.MEgressInterGB: fcell(0.5, "GB", "bigquery_usage")}),
+			metricRowOf(gcpsource.GroupNetworking, "project-a", "", map[string]gcpsource.Cell{gcpsource.MOutboundGB: fcell(0.25, "GB", "bigquery_usage")}),
+			metricRowOf(gcpsource.GroupNetworking, "project-b", "", map[string]gcpsource.Cell{gcpsource.MOutboundGB: fcell(0.5, "GB", "bigquery_usage")})),
+	}
+	f.refreshBody(t, `{"mode":"week","week":"2026-W42"}`)
+	_, tbl, _ := f.doJSON(t, http.MethodGet, "/api/v1/metrics/table?week=2026-W42", "")
+
+	// Cloud Run: rows merged by service; total memory unchanged; active/idle summed.
+	rows := asList(t, groupByName(t, tbl, "cloudrun")["rows"])
+	if len(rows) != 4 { // svc-a, svc-b, svc-billing-only, total
+		t.Fatalf("cloudrun rows = %v", rows)
+	}
+	a := asMap(t, rows[0])
+	if a["resource"] != "svc-a" || num(cellVal(t, a, "service_memory_gib_s")) != 310 || num(cellVal(t, a, "service_memory_active_gib_s")) != 10 || num(cellVal(t, a, "service_memory_idle_gib_s")) != 300 {
+		t.Fatalf("svc-a = %v", a)
+	}
+	if g := asMap(t, asMap(t, a["cells"])["service_cpu_active_sec"])["gap"]; g == nil {
+		t.Fatalf("svc-a cpu active must be a gap: %v", a)
+	}
+	bo := asMap(t, rows[2])
+	if bo["resource"] != "svc-billing-only" || cellVal(t, bo, "service_memory_gib_s") != nil || asMap(t, asMap(t, bo["cells"])["service_memory_gib_s"])["gap"] == nil {
+		t.Fatalf("billing-only service must show a gap for monitoring memory: %v", bo)
+	}
+	tot := totalRowOf(t, tbl, "cloudrun")
+	for col, want := range map[string]float64{"service_memory_gib_s": 325, "service_memory_active_gib_s": 25, "service_memory_idle_gib_s": 302, "requests": 150, "egress_intercontinental_gb": 0.5} {
+		if v := cellVal(t, tot, col); v == nil || num(v) != want {
+			t.Errorf("cloudrun total %s = %v, want %v", col, v, want)
+		}
+	}
+	if asMap(t, asMap(t, tot["cells"])["service_cpu_sec"])["gap"] == nil {
+		t.Errorf("cpu total with no data must be a gap: %v", tot)
+	}
+
+	// VM: percentages are not summed.
+	vmTot := totalRowOf(t, tbl, "vm")
+	cpu := asMap(t, asMap(t, vmTot["cells"])["cpu_pct"])
+	if cpu["value"] != nil || cpu["gap"] != "—" {
+		t.Errorf("vm cpu total = %v, want a dash gap", cpu)
+	}
+
+	// Networking: project-level rows are shown per project, total sums them.
+	net := asList(t, groupByName(t, tbl, "networking")["rows"])
+	if len(net) != 3 || asMap(t, net[0])["resource"] != "project-a" {
+		t.Fatalf("networking rows = %v", net)
+	}
+	if v := cellVal(t, totalRowOf(t, tbl, "networking"), "outbound_gb"); v == nil || num(v) != 0.75 {
+		t.Errorf("networking outbound total = %v", v)
+	}
+
+	// Scope limits the total to the scoped rows; empty groups get no total.
+	_, scoped, _ := f.doJSON(t, http.MethodGet, "/api/v1/metrics/table?week=2026-W42&scope=project-b", "")
+	if rs := asList(t, groupByName(t, scoped, "cloudrun")["rows"]); len(rs) != 0 {
+		t.Errorf("scoped cloudrun rows = %v", rs)
+	}
+	if v := cellVal(t, totalRowOf(t, scoped, "networking"), "outbound_gb"); v == nil || num(v) != 0.5 {
+		t.Errorf("scoped networking total = %v", v)
+	}
+
+	// Limits evaluate on the TOTAL memory (325), not active or idle alone.
+	_, lim, _ := f.doJSON(t, http.MethodGet, "/api/v1/limits?week=2026-W42", "")
+	for _, l := range asList(t, lim["limits"]) {
+		lm := asMap(t, l)
+		if lm["id"] == "cloudrun_memory_gib_s" {
+			if lm["week_used"] == nil || num(lm["week_used"]) != 325 {
+				t.Errorf("memory limit week_used = %v, want 325", lm["week_used"])
+			}
+			if lm["reason"] != "free tier is consumed by active + idle min-instance memory" {
+				t.Errorf("memory limit reason = %v", lm["reason"])
+			}
+		}
 	}
 }

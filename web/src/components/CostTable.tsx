@@ -1,3 +1,4 @@
+import { useCurrency } from '@/lib/currency';
 import { useEffect, useRef } from 'react';
 import { formatDelta, formatMoney, formatPct, formatSignedMoney, formatThreshold } from '@/lib/format';
 import type { Cell, Column, CostRow, Thresholds, WeekID } from '@/lib/types';
@@ -24,6 +25,7 @@ const SKELETON_ROWS = 6;
 const NOTE_PREVIEW_CHARS = 120;
 
 export function CostTable(p: Props) {
+  const currency = useCurrency();
   const rowRefs = useRef(new Map<WeekID, HTMLTableRowElement>());
 
   useEffect(() => {
@@ -42,7 +44,7 @@ export function CostTable(p: Props) {
         <caption className={styles.caption}>
           {p.fallback
             ? 'Cost table unavailable from the API — showing every week as not fetched (see the banner above).'
-            : 'Cost by service per ISO week · USD, net of credits · click a number for provenance and drill-down.'}
+            : `Cost by service per ISO week · ${currency}, net of credits · click a number for provenance and drill-down.`}
         </caption>
         <thead>
           <tr>
@@ -162,6 +164,7 @@ interface DataCellProps {
 }
 
 function DataCell({ row, column, thresholds, onClick }: DataCellProps) {
+  const currency = useCurrency();
   switch (column.kind) {
     case 'stub':
       return (
@@ -196,7 +199,7 @@ function DataCell({ row, column, thresholds, onClick }: DataCellProps) {
       }
       const flagTitle =
         cell.flagged && thresholds
-          ? `change vs the previous week exceeds thresholds (≥ ${formatThreshold(thresholds.pct)} % and ≥ $${formatThreshold(thresholds.abs_usd)})`
+          ? `change vs the previous week exceeds thresholds (≥ ${formatThreshold(thresholds.pct)} % and ≥ ${formatMoney(thresholds.abs_usd, currency)})`
           : undefined;
       return (
         <td className={`${styles.num} ${cell.flagged ? styles.flaggedCell : ''}`}>
@@ -205,14 +208,14 @@ function DataCell({ row, column, thresholds, onClick }: DataCellProps) {
             className={styles.cellButton}
             data-testid={`cell-${row.week}-${column.key}`}
             data-net={cell.net}
-            aria-label={`${row.week} ${column.label} ${formatMoney(cell.net)}, open inspector`}
-            title={`gross ${formatMoney(cell.gross)} · credits ${formatSignedMoney(cell.credits)}`}
+            aria-label={`${row.week} ${column.label} ${formatMoney(cell.net, currency)}, open inspector`}
+            title={`gross ${formatMoney(cell.gross, currency)} · credits ${formatSignedMoney(cell.credits, currency)}`}
             onClick={() => onClick(row, column)}
           >
-            <span className={styles.value}>{formatMoney(cell.net)}</span>
+            <span className={styles.value}>{formatMoney(cell.net, currency)}</span>
             {cell.flagged && cell.delta_abs !== null ? (
               <span className={styles.flag} title={flagTitle} data-testid="anomaly-flag">
-                {formatDelta(cell.delta_abs, cell.delta_pct)}
+                {formatDelta(cell.delta_abs, cell.delta_pct, currency)}
               </span>
             ) : null}
           </button>

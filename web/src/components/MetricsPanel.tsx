@@ -34,10 +34,12 @@ export interface SelectedMetricCell {
   project: string;
   resource: string;
   column: string;
+  /** The group's TOTAL row (project and resource are both empty there). */
+  total?: boolean;
 }
 
-function isSelected(sel: SelectedMetricCell | null, group: string, project: string, resource: string, column: string): boolean {
-  return !!sel && sel.group === group && sel.project === project && sel.resource === resource && sel.column === column;
+function isSelected(sel: SelectedMetricCell | null, group: string, project: string, resource: string, column: string, total = false): boolean {
+  return !!sel && sel.group === group && sel.project === project && sel.resource === resource && sel.column === column && !!sel.total === total;
 }
 
 interface ViewProps {
@@ -49,11 +51,11 @@ interface ViewProps {
 function findCell(data: MetricsTableResponse, sel: SelectedMetricCell | null): { cell: MetricCell; title: string } | null {
   if (!sel) return null;
   const g = data.groups.find((x) => x.group === sel.group);
-  const row = g?.rows.find((r) => r.project === sel.project && r.resource === sel.resource);
+  const row = g?.rows.find((r) => r.project === sel.project && r.resource === sel.resource && r.is_total === !!sel.total);
   const cell = row?.cells[sel.column];
   const col = g?.columns.find((c) => c.key === sel.column);
   if (!g || !row || !cell || !col) return null;
-  const who = resourceLabel(row.project, row.resource).name;
+  const who = resourceLabel(row.project, row.resource, row.is_total).name;
   return { cell, title: `${groupHeading(g.group, g.label)} · ${who} · ${col.label}` };
 }
 
@@ -109,21 +111,31 @@ function GroupTable({ group, selected, onSelect }: { group: MetricGroup; selecte
               </tr>
             ) : (
               group.rows.map((r) => {
-                const who = resourceLabel(r.project, r.resource);
+                const isTotal = r.is_total === true;
+                const who = resourceLabel(r.project, r.resource, isTotal);
                 return (
-                  <tr key={`${r.project}|${r.resource}`} className={styles.row} data-testid="metrics-row">
-                    <th scope="row" className={who.total ? `${styles.resCell} ${styles.totalRes}` : styles.resCell}>
+                  <tr
+                    key={`${r.project}|${r.resource}|${isTotal}`}
+                    className={isTotal ? `${styles.row} ${styles.totalRow}` : styles.row}
+                    data-testid={isTotal ? 'metrics-total-row' : 'metrics-row'}
+                    data-total={isTotal ? 'true' : undefined}
+                  >
+                    <th scope="row" className={isTotal ? `${styles.resCell} ${styles.totalLabel}` : who.total ? `${styles.resCell} ${styles.totalRes}` : styles.resCell}>
                       {who.name}
-                      {!who.total ? <span className={styles.project}>{r.project}</span> : null}
+                      {!who.total && !isTotal ? <span className={styles.project}>{r.project}</span> : null}
                     </th>
                     {group.columns.map((c) => (
                       <MetricTd
                         key={c.key}
                         cell={r.cells[c.key]}
                         label={`${who.name} ${c.label}`}
-                        selected={isSelected(selected, group.group, r.project, r.resource, c.key)}
+                        selected={isSelected(selected, group.group, r.project, r.resource, c.key, isTotal)}
                         onClick={() =>
-                          onSelect(isSelected(selected, group.group, r.project, r.resource, c.key) ? null : { group: group.group, project: r.project, resource: r.resource, column: c.key })
+                          onSelect(
+                            isSelected(selected, group.group, r.project, r.resource, c.key, isTotal)
+                              ? null
+                              : { group: group.group, project: r.project, resource: r.resource, column: c.key, total: isTotal },
+                          )
                         }
                       />
                     ))}

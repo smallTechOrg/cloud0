@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/smallTechOrg/cloud0/internal/config"
+	"github.com/smallTechOrg/cloud0/internal/errorsrc"
 	"github.com/smallTechOrg/cloud0/internal/logging"
 	"github.com/smallTechOrg/cloud0/internal/refresh"
 	"github.com/smallTechOrg/cloud0/internal/store"
@@ -31,6 +32,9 @@ type Deps struct {
 	BigQuery func() *BigQueryHealth
 	// Refresh runs POST /refresh; main builds it with the real BigQuery source.
 	Refresh *refresh.Runner
+	// Samples reads Cloud Logging for GET /errors/samples; nil answers
+	// 503 samples_unavailable.
+	Samples errorsrc.LogEntrySource
 }
 
 func (d Deps) now() time.Time {

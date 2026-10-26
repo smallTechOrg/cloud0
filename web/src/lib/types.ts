@@ -49,6 +49,8 @@ export interface AppConfig {
   current_week: WeekID;
   default_week: WeekID;
   settle_hours: number;
+  /** ISO 4217 code of every Money value (CLOUD0_CURRENCY, default INR). */
+  currency: string;
   now: Timestamp;
 }
 
@@ -345,8 +347,10 @@ export interface MetricColumn {
 
 export interface MetricTableRow {
   project: string;
-  /** `""` = per-project group-total row. */
+  /** `""` on the group TOTAL row (`is_total`); otherwise the resource (service, VM, bucket, project). */
   resource: string;
+  /** The group's TOTAL row, assembled server-side (last row of the group); `project` is `""` there. */
+  is_total: boolean;
   /** One entry per column of the group. */
   cells: Record<string, MetricCell>;
 }
@@ -385,6 +389,10 @@ export interface ErrorTableRow {
   c5xx: number | null;
   groups: number | null;
   occurrences: number | null;
+  /** Cloud Run only: exact HTTP status code -> request count; null otherwise or for older batches. */
+  by_code: Record<string, number> | null;
+  /** Cloud Run only: Google Cloud Logs Explorer deep link for this service and week. */
+  logs_url: string | null;
   gap: string | null;
   hint: string | null;
   provenance: Provenance;
@@ -406,6 +414,48 @@ export interface ErrorsTableResponse {
   snapshot: SnapshotRef | null;
   rows: ErrorTableRow[];
   totals: ErrorTotals;
+}
+
+// ---- GET /errors/samples ----------------------------------------------------
+
+export interface SamplePathStat {
+  path: string;
+  status: number;
+  count: number;
+  /** Heuristic path-pattern guess, not proof. */
+  scanner_like: boolean;
+}
+
+export interface SampleEntry {
+  timestamp: Timestamp;
+  status: number;
+  method: string;
+  path: string;
+  user_agent: string;
+  /** Truncated network (IPv4 /24, IPv6 /48), never a full address. */
+  remote_ip: string;
+  latency_ms: number;
+  trace: string;
+  scanner_like: boolean;
+}
+
+export interface ErrorSamplesResponse {
+  week: WeekID;
+  project: string;
+  service: string;
+  min_status: number;
+  generated_at: Timestamp;
+  logs_url: string;
+  scanned: number;
+  sampled: boolean;
+  note: string;
+  out_of_retention: boolean;
+  retention_note: string;
+  status_counts: Record<string, number>;
+  top_paths: SamplePathStat[];
+  scanner_share_4xx: number | null;
+  heuristic_note: string;
+  entries: SampleEntry[];
 }
 
 // ---- GET/PUT /limits --------------------------------------------------------

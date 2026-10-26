@@ -28,7 +28,7 @@ On demand, fetches net-of-credits billing for one ISO week (or every week first�
 | SQLite | transactional insert of run_sources + snapshots + rows | `runs.status = failed`, `runs.error` set; 500 `internal_error` only if even that fails |
 
 ## Business Rules
-- One snapshot per ISO week per refresh; a snapshot is never updated. `mode=all` produces one snapshot per week in `first_week…current_week` from a single query (grouped by `iso_year, iso_week`), all sharing one `run_source_id`; weeks with no rows get an empty snapshot (`row_count 0`, totals 0) so they read as "fetched, $0".
+- One snapshot per ISO week per refresh; a snapshot is never updated. `mode=all` produces one snapshot per week in `first_week…current_week` from a single query (grouped by `iso_year, iso_week`), all sharing one `run_source_id`; weeks with no rows get an empty snapshot (`row_count 0`, totals 0) so they read as "fetched, 0".
 - Snapshots always cover all billed projects (no project filter in SQL); `project_id` is stored per row so any scope can be derived at read time.
 - `net = gross + credits` per row; `gross = SUM(cost)`, `credits = SUM(credits.amount)` summed per line item (correlated subquery, never a join that multiplies cost).
 - `status_at_fetch` = week status at the query start time.

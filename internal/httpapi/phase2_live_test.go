@@ -153,10 +153,22 @@ func TestLive_Phase2Journey(t *testing.T) {
 		t.Fatalf("errors table: cloudrun rows=%d 4xx=%v (%v)", crRows, c4, et["rows"])
 	}
 	errGroup := asList(t, groupByName(t, tbl, "errors")["rows"])
-	if len(errGroup) != crRows {
+	if len(errGroup) != crRows+1 || asMap(t, errGroup[len(errGroup)-1])["is_total"] != true {
 		t.Fatalf("errors group rows = %d, cloudrun error rows = %d", len(errGroup), crRows)
 	}
 	t.Logf("%s: cloudrun 4xx = %v over %d services; total rows %d", week, c4, crRows, len(asList(t, et["rows"])))
+
+	// Cloud Run memory reconciliation: Monitoring total vs billing active + idle (within 5%).
+	crTot := totalRowOf(t, tbl, "cloudrun")
+	memTot, memAct, memIdle := cellVal(t, crTot, "service_memory_gib_s"), cellVal(t, crTot, "service_memory_active_gib_s"), cellVal(t, crTot, "service_memory_idle_gib_s")
+	if memTot == nil || memAct == nil || memIdle == nil {
+		t.Fatalf("cloud run memory total/active/idle missing: %v", crTot)
+	}
+	memT, ma, mi := num(memTot), num(memAct), num(memIdle)
+	t.Logf("%s Cloud Run memory GiB-s: monitoring total %.0f, billing active %.0f + idle %.0f = %.0f", week, memT, ma, mi, ma+mi)
+	if memT <= 0 || math.Abs(memT-(ma+mi))/memT > 0.05 {
+		t.Fatalf("monitoring total %.0f does not reconcile with active+idle %.0f within 5%%", memT, ma+mi)
+	}
 
 	// 3. Limits: a status for every allowance; non-stubs have a real level.
 	_, lim, _ := f.doJSON(t, http.MethodGet, "/api/v1/limits?week="+week, "")

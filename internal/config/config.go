@@ -26,10 +26,13 @@ const (
 	DefaultLogLevel            = "info"
 	DefaultSmokeWeek           = "2026-W42"
 	DefaultE2EPort             = 8097
+	DefaultCurrency            = "INR"
 )
 
 // TablePattern is the shape a fully-qualified BigQuery table id must have.
 var TablePattern = regexp.MustCompile(`^[A-Za-z0-9-]+\.[A-Za-z0-9_]+\.[A-Za-z0-9_]+$`)
+
+var currencyPattern = regexp.MustCompile(`^[A-Z]{3}$`)
 
 // Config is the validated runtime configuration.
 type Config struct {
@@ -50,6 +53,10 @@ type Config struct {
 	SettleHours         int
 	PartitionMarginDays int
 	LogLevel            string
+
+	// Currency is the ISO 4217 code of the billing export's money values
+	// (CLOUD0_CURRENCY). Display-only: no conversion is ever applied.
+	Currency string
 
 	// Test-only knobs, read here so every variable has one home.
 	SmokeWeek isoweek.Week
@@ -150,6 +157,14 @@ func Load(getenv func(string) string) (Config, error) {
 		errs = append(errs, &ValidationError{"CLOUD0_LOG_LEVEL", fmt.Sprintf("must be one of debug|info|warn|error, got %q", cfg.LogLevel)})
 	}
 
+	cfg.Currency = strings.ToUpper(get("CLOUD0_CURRENCY"))
+	if cfg.Currency == "" {
+		cfg.Currency = DefaultCurrency
+	}
+	if !currencyPattern.MatchString(cfg.Currency) {
+		errs = append(errs, &ValidationError{"CLOUD0_CURRENCY", fmt.Sprintf("must be a 3-letter ISO 4217 code like INR or USD, got %q", get("CLOUD0_CURRENCY"))})
+	}
+
 	cfg.SmokeWeek, err = loadWeek(get, "CLOUD0_SMOKE_WEEK", DefaultSmokeWeek)
 	if err != nil {
 		errs = append(errs, err)
@@ -188,6 +203,7 @@ func (c Config) Redacted() map[string]any {
 		"settle_hours":          c.SettleHours,
 		"partition_margin_days": c.PartitionMarginDays,
 		"log_level":             c.LogLevel,
+		"currency":              c.Currency,
 	}
 }
 

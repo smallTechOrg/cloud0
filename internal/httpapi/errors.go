@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/smallTechOrg/cloud0/internal/costtable"
+	"github.com/smallTechOrg/cloud0/internal/errorsrc"
 	"github.com/smallTechOrg/cloud0/internal/gcpsource"
 	"github.com/smallTechOrg/cloud0/internal/isoweek"
 	"github.com/smallTechOrg/cloud0/internal/store"
@@ -82,7 +83,12 @@ func (d Deps) handleErrorsTable(w http.ResponseWriter, r *http.Request) *APIErro
 		// Error batches have no snapshot header: the id is the batch's run_id.
 		resp.Snapshot = snapshotRef(batch.RunID, batch.FetchedAt, batch.StatusAtFetch, batch.RunID, batch.RowCount, cur)
 		for _, row := range rows {
-			resp.Rows = append(resp.Rows, store.ErrorRowToJSON(row))
+			rj := store.ErrorRowToJSON(row)
+			if row.Source == gcpsource.ErrSrcCloudRun && row.Service != "" && row.Gap == "" {
+				u := errorsrc.LogsExplorerURL(row.Project, row.Service, gcpsource.Window{Start: week.Start(), End: week.End()})
+				rj.LogsURL = &u
+			}
+			resp.Rows = append(resp.Rows, rj)
 			addTo(&resp.Totals.C2xx, row.C2xx)
 			addTo(&resp.Totals.C3xx, row.C3xx)
 			addTo(&resp.Totals.C4xx, row.C4xx)

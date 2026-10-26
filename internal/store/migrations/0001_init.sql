@@ -97,7 +97,7 @@ CREATE TABLE settings (
 INSERT INTO settings ("key", value, updated_at)
 VALUES ('anomaly_pct_threshold', '20', strftime('%Y-%m-%dT%H:%M:%SZ', 'now'));
 INSERT INTO settings ("key", value, updated_at)
-VALUES ('anomaly_abs_threshold_usd', '50', strftime('%Y-%m-%dT%H:%M:%SZ', 'now'));
+VALUES ('anomaly_abs_threshold_usd', '200', strftime('%Y-%m-%dT%H:%M:%SZ', 'now'));
 
 -- +goose Down
 DROP TABLE IF EXISTS settings;

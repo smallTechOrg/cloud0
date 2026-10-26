@@ -235,3 +235,161 @@
     background-position: -200% 0;
   }
 }
+
+.how {
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 0.5rem 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.howSummary {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.howText {
+  margin: 0.4rem 0 0.1rem;
+  line-height: 1.45;
+  font-size: 0.9rem;
+}
+
+.expandLink {
+  display: block;
+  margin-top: 0.2rem;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 400;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.detailCell {
+  background: #f8fafc;
+  text-align: left;
+}
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.3rem 0.2rem;
+  text-align: left;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.chip {
+  display: inline-block;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+  background: #fff;
+}
+
+.chip4 {
+  background: #fff4d6;
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.chip5 {
+  background: #fde8e6;
+  border-color: var(--err);
+  color: var(--err);
+  font-weight: 700;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.logsLink {
+  color: var(--accent);
+  font-size: 0.9rem;
+}
+
+.sampleNote,
+.heuristic {
+  margin: 0.2rem 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.shareLine {
+  margin: 0.3rem 0;
+  font-size: 0.95rem;
+}
+
+.sampleTable {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.82rem;
+  margin: 0.4rem 0;
+}
+
+.sampleTable th,
+.sampleTable td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.2rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.caption {
+  caption-side: top;
+  text-align: left;
+  font-weight: 600;
+  padding: 0.2rem 0;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.ua {
+  max-width: 18rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scannerTag {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--stub-border);
+  background: var(--stub-bg);
+  color: var(--warn);
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sampleError {
+  border: 1px solid var(--err);
+  border-radius: 6px;
+  background: #fde8e6;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.85rem;
+}

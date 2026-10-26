@@ -183,7 +183,7 @@ Rules: all Go application code under `internal/` (one module root); all frontend
 - Errors: wrap with `fmt.Errorf("billing: run query: %w", err)`; sentinel errors as package-level `var ErrX = errors.New(...)`. Never `panic` outside `main` initialisation.
 - Context first argument everywhere that does I/O; timeouts: BigQuery query 120 s, HTTP server read/write 130 s, shutdown 10 s.
 - Time: always UTC; `time.Time` in memory, RFC3339 `TEXT` in SQLite (`2026-10-26T12:00:00Z`), ISO dates as `YYYY-MM-DD`. Functions that need "now" take a `now time.Time` parameter or a `Clock` so tests inject it.
-- Money: `float64` USD end to end (BigQuery `FLOAT64` → Go → SQLite `REAL` → JSON number). Round only for display (UI, 2 dp). Tests compare with tolerance `0.005`.
+- Money: `float64` in the export's currency (`CLOUD0_CURRENCY`, default INR) end to end (BigQuery `FLOAT64` → Go → SQLite `REAL` → JSON number). Round only for display (UI, 2 dp). Tests compare with tolerance `0.005`.
 - Types at boundaries: request/response structs in `httpapi`, row structs in `store`, no `map[string]any` crossing packages.
 - JSON field names `snake_case`, matching `spec/api.md` exactly.
 - Response envelope: success = resource object at top level (never contains a key named `error`); failure = `{"error":{"code","message","hint"}}` with the HTTP status from `spec/api.md`. Handlers return `*APIError`; `envelope.go` is the only place that writes error bodies. No stack traces in responses.
@@ -226,6 +226,7 @@ All variables are read by `internal/config`. `.env.example` lists exactly this t
 | `CLOUD0_SETTLE_HOURS` | no | `48` | Hours after a week ends (Mon 00:00 UTC) before it is labelled `final`. |
 | `CLOUD0_PARTITION_MARGIN_DAYS` | no | `1` | Days added on each side of the usage window for the `_PARTITIONTIME` filter. |
 | `CLOUD0_LOG_LEVEL` | no | `info` | `debug` / `info` / `warn` / `error`. |
+| `CLOUD0_CURRENCY` | no | `INR` | 3-letter ISO 4217 code (validated `^[A-Z]{3}$`, upper-cased) of the billing export's `currency` column. Display only: labels every money value in the UI/CSV; no conversion. |
 | `CLOUD0_SMOKE_WEEK` | no (tests only) | `2026-W42` | A known complete, non-empty week used by the smoke and e2e tests. |
 | `CLOUD0_E2E_PORT` | no (tests only) | `8097` | Port Playwright starts the binary on (so e2e never collides with a running dev server on `CLOUD0_PORT`). The Go live tests use an OS-assigned free port instead. |
 
@@ -244,6 +245,7 @@ CLOUD0_FIRST_WEEK=2026-W18
 CLOUD0_SETTLE_HOURS=48
 CLOUD0_PARTITION_MARGIN_DAYS=1
 CLOUD0_LOG_LEVEL=info
+CLOUD0_CURRENCY=INR
 CLOUD0_SMOKE_WEEK=2026-W42
 CLOUD0_E2E_PORT=8097
 ```

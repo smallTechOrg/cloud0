@@ -2,7 +2,7 @@
 // Kept free of React/DOM so they are unit-testable (spec/capabilities/month-view.md).
 
 import { csvField, csvNumber } from './csv';
-import { formatMoney } from './format';
+import { DEFAULT_CURRENCY, formatMoney } from './format';
 import type { MonthColumn, MonthID, MonthRow, MonthSummary, RefreshResponse, Scope } from './types';
 
 const CRLF = '\r\n';
@@ -33,11 +33,11 @@ export function monthWindow(picked: MonthID, span = 6): { from: MonthID; to: Mon
   return { from: addMonths(picked, -(span - 1)), to: picked };
 }
 
-/** `Current month net 812.40 · target 2,500.00 · projected 2,210.90`; target `—` when unset. */
-export function formatSummaryLine(s: MonthSummary): string {
-  const net = s.has_data ? formatMoney(s.net, { grouped: true }) : '—';
-  const projected = s.has_data ? formatMoney(s.projected, { grouped: true }) : '—';
-  const target = s.target === null ? '—' : formatMoney(s.target, { grouped: true });
+/** `Current month net ₹812.40 · target ₹2,500.00 · projected ₹2,210.90`; target `—` when unset. */
+export function formatSummaryLine(s: MonthSummary, currency: string = DEFAULT_CURRENCY): string {
+  const net = s.has_data ? formatMoney(s.net, currency) : '—';
+  const projected = s.has_data ? formatMoney(s.projected, currency) : '—';
+  const target = s.target === null ? '—' : formatMoney(s.target, currency);
   return `Current month net ${net} · target ${target} · projected ${projected}`;
 }
 
@@ -66,9 +66,10 @@ export function buildMonthCsv(columns: readonly MonthColumn[], rows: readonly Mo
   return lines.join(CRLF) + CRLF;
 }
 
-export function monthCsvFilename(scope: Scope, from: MonthID, to: MonthID): string {
+/** `cloud0-month-<scope>-<from>-<to>-<CURRENCY>.csv`; cells are plain numbers in that currency. */
+export function monthCsvFilename(scope: Scope, from: MonthID, to: MonthID, currency: string): string {
   const safeScope = scope.replace(/[^A-Za-z0-9._-]/g, '_');
-  return `cloud0-month-${safeScope}-${from}-${to}.csv`;
+  return `cloud0-month-${safeScope}-${from}-${to}-${currency.toUpperCase()}.csv`;
 }
 
 export interface RefreshOutcome {

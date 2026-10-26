@@ -172,7 +172,7 @@ func TestConfig_ReturnsProjectsAndWeeksFromInjectedNow(t *testing.T) {
 	if m["first_week"] != "2026-W18" || m["current_week"] != "2026-W44" || m["default_week"] != "2026-W43" {
 		t.Fatalf("weeks: %v", m)
 	}
-	if m["settle_hours"].(float64) != 48 || m["now"] != "2026-10-26T09:15:30Z" {
+	if m["currency"] != "INR" || m["settle_hours"].(float64) != 48 || m["now"] != "2026-10-26T09:15:30Z" {
 		t.Fatalf("settle/now: %v", m)
 	}
 }

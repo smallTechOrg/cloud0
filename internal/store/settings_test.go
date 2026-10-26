@@ -15,7 +15,7 @@ func TestGetThresholds_ReturnsSeededDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.AnomalyPctThreshold != 20 || got.AnomalyAbsThresholdUSD != 50 {
+	if got.AnomalyPctThreshold != 20 || got.AnomalyAbsThreshold != 200 {
 		t.Fatalf("defaults = %+v, want 20 / 50", got)
 	}
 	if got.UpdatedAt.IsZero() || got.UpdatedAt.Location() != time.UTC {
@@ -32,7 +32,7 @@ func TestPutThresholds_RoundTripsAtomicallyAndSurvivesReopen(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PutThresholds: %v", err)
 	}
-	if put.AnomalyPctThreshold != 10 || put.AnomalyAbsThresholdUSD != 25.5 || !put.UpdatedAt.Equal(later) {
+	if put.AnomalyPctThreshold != 10 || put.AnomalyAbsThreshold != 25.5 || !put.UpdatedAt.Equal(later) {
 		t.Fatalf("put = %+v", put)
 	}
 	got, err := GetThresholds(ctx, s.DB)
@@ -47,7 +47,7 @@ func TestPutThresholds_RoundTripsAtomicallyAndSurvivesReopen(t *testing.T) {
 		t.Fatalf("zero thresholds rejected: %v", err)
 	}
 	zero, _ := GetThresholds(ctx, s.DB)
-	if zero.AnomalyPctThreshold != 0 || zero.AnomalyAbsThresholdUSD != 0 || !zero.UpdatedAt.After(got.UpdatedAt) {
+	if zero.AnomalyPctThreshold != 0 || zero.AnomalyAbsThreshold != 0 || !zero.UpdatedAt.After(got.UpdatedAt) {
 		t.Fatalf("zero = %+v", zero)
 	}
 
@@ -80,7 +80,7 @@ func TestPutThresholds_RejectsNegativeNaNAndInf(t *testing.T) {
 		}
 	}
 	got, _ := GetThresholds(ctx, s.DB)
-	if got.AnomalyPctThreshold != 20 || got.AnomalyAbsThresholdUSD != 50 {
+	if got.AnomalyPctThreshold != 20 || got.AnomalyAbsThreshold != 200 {
 		t.Fatalf("rejected writes changed settings: %+v", got)
 	}
 }

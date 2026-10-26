@@ -1,3 +1,4 @@
+import { useCurrency } from '@/lib/currency';
 import { useState } from 'react';
 import { formatBytes, formatDurationMs, formatInteger, formatMoney, formatSignedMoney, formatTimestamp } from '@/lib/format';
 import { SCOPE_ALL, type Column, type Scope, type SnapshotProvenance, type WeekID } from '@/lib/types';
@@ -25,6 +26,7 @@ export function sqlWithParams(sql: string, params: Record<string, string>): stri
 }
 
 export function ProvenanceView({ snapshot, column, scope, previous = null }: Props) {
+  const currency = useCurrency();
   const [copied, setCopied] = useState<'idle' | 'copied' | 'failed'>('idle');
   const src = snapshot.source;
 
@@ -71,8 +73,8 @@ export function ProvenanceView({ snapshot, column, scope, previous = null }: Pro
         <dd>{formatInteger(snapshot.row_count)}</dd>
         <dt>Totals</dt>
         <dd>
-          net {formatMoney(snapshot.net_total)} · gross {formatMoney(snapshot.gross_total)} · credits{' '}
-          {formatSignedMoney(snapshot.credits_total)}
+          net {formatMoney(snapshot.net_total, currency)} · gross {formatMoney(snapshot.gross_total, currency)} · credits{' '}
+          {formatSignedMoney(snapshot.credits_total, currency)}
         </dd>
         <dt>Projects</dt>
         <dd>{snapshot.projects.length > 0 ? snapshot.projects.join(', ') : 'none in snapshot'}</dd>
@@ -85,7 +87,7 @@ export function ProvenanceView({ snapshot, column, scope, previous = null }: Pro
       </p>
       {previous ? (
         <p className={styles.line} data-testid="inspector-previous">
-          Previous week {previous.week}: snapshot #{previous.snapshotId} · Total GCP {formatMoney(previous.total)}
+          Previous week {previous.week}: snapshot #{previous.snapshotId} · Total GCP {formatMoney(previous.total, currency)}
         </p>
       ) : column.kind === 'pct_change' ? (
         <p className={styles.line} data-testid="inspector-previous">

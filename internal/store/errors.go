@@ -50,11 +50,19 @@ func InsertErrorRows(ctx context.Context, q Querier, nb NewErrorBatch) (ErrorBat
 		if err != nil {
 			return ErrorBatch{}, fmt.Errorf("store: marshal error provenance: %w", err)
 		}
-		if _, err := q.ExecContext(ctx, `INSERT INTO error_rows (run_id, iso_year, iso_week, fetched_at, status_at_fetch, source, project_id, service, c2xx, c3xx, c4xx, c5xx, err_groups, occurrences, gap_reason, fix_hint, provenance_json)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		var byCode any
+		if len(r.ByCode) > 0 {
+			bj, err := json.Marshal(r.ByCode)
+			if err != nil {
+				return ErrorBatch{}, fmt.Errorf("store: marshal by_code: %w", err)
+			}
+			byCode = string(bj)
+		}
+		if _, err := q.ExecContext(ctx, `INSERT INTO error_rows (run_id, iso_year, iso_week, fetched_at, status_at_fetch, source, project_id, service, c2xx, c3xx, c4xx, c5xx, err_groups, occurrences, gap_reason, fix_hint, provenance_json, by_code_json)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			nb.RunID, nb.Week.Year, nb.Week.Week, FormatTime(fetched), string(nb.StatusAtFetch), r.Source, r.Project, r.Service,
 			nullableInt(r.C2xx), nullableInt(r.C3xx), nullableInt(r.C4xx), nullableInt(r.C5xx), nullableInt(r.Groups), nullableInt(r.Occurrences),
-			r.Gap, r.Hint, string(pj)); err != nil {
+			r.Gap, r.Hint, string(pj), byCode); err != nil {
 			return ErrorBatch{}, fmt.Errorf("store: insert error row %s: %w", nb.Week, err)
 		}
 	}
@@ -76,7 +84,7 @@ func LatestErrorRows(ctx context.Context, q Querier, week isoweek.Week) (ErrorBa
 
 // ErrorRowsForRun returns the rows one run wrote for a week; ErrNotFound if none.
 func ErrorRowsForRun(ctx context.Context, q Querier, runID int64, week isoweek.Week) (ErrorBatch, []gcpsource.ErrorRow, error) {
-	rs, err := q.QueryContext(ctx, `SELECT fetched_at, status_at_fetch, source, project_id, service, c2xx, c3xx, c4xx, c5xx, err_groups, occurrences, gap_reason, fix_hint, provenance_json
+	rs, err := q.QueryContext(ctx, `SELECT fetched_at, status_at_fetch, source, project_id, service, c2xx, c3xx, c4xx, c5xx, err_groups, occurrences, gap_reason, fix_hint, provenance_json, by_code_json
 FROM error_rows WHERE run_id = ? AND iso_year = ? AND iso_week = ? ORDER BY id`, runID, week.Year, week.Week)
 	if err != nil {
 		return ErrorBatch{}, nil, fmt.Errorf("store: error rows run %d: %w", runID, err)
@@ -87,8 +95,9 @@ FROM error_rows WHERE run_id = ? AND iso_year = ? AND iso_week = ? ORDER BY id`,
 	for rs.Next() {
 		var r gcpsource.ErrorRow
 		var fetched, status, pj string
+		var bcj sql.NullString
 		var c2, c3, c4, c5, g, o sql.NullInt64
-		if err := rs.Scan(&fetched, &status, &r.Source, &r.Project, &r.Service, &c2, &c3, &c4, &c5, &g, &o, &r.Gap, &r.Hint, &pj); err != nil {
+		if err := rs.Scan(&fetched, &status, &r.Source, &r.Project, &r.Service, &c2, &c3, &c4, &c5, &g, &o, &r.Gap, &r.Hint, &pj, &bcj); err != nil {
 			return ErrorBatch{}, nil, fmt.Errorf("store: error rows run %d: %w", runID, err)
 		}
 		t, err := ParseTime(fetched)
@@ -97,6 +106,11 @@ FROM error_rows WHERE run_id = ? AND iso_year = ? AND iso_week = ? ORDER BY id`,
 		}
 		batch.FetchedAt, batch.StatusAtFetch = t, isoweek.Status(status)
 		r.C2xx, r.C3xx, r.C4xx, r.C5xx, r.Groups, r.Occurrences = fromNullInt(c2), fromNullInt(c3), fromNullInt(c4), fromNullInt(c5), fromNullInt(g), fromNullInt(o)
+		if bcj.Valid && bcj.String != "" {
+			if err := json.Unmarshal([]byte(bcj.String), &r.ByCode); err != nil {
+				return ErrorBatch{}, nil, fmt.Errorf("store: error row by_code: %w", err)
+			}
+		}
 		var p ProvenanceJSON
 		if err := json.Unmarshal([]byte(pj), &p); err != nil {
 			return ErrorBatch{}, nil, fmt.Errorf("store: error row provenance: %w", err)
@@ -116,23 +130,25 @@ FROM error_rows WHERE run_id = ? AND iso_year = ? AND iso_week = ? ORDER BY id`,
 
 // ErrorRowJSON is gcpsource.ErrorRow on the wire (spec/api.md → GET /errors/table).
 type ErrorRowJSON struct {
-	Source      string         `json:"source"`
-	Project     string         `json:"project"`
-	Service     string         `json:"service"`
-	C2xx        *int64         `json:"c2xx"`
-	C3xx        *int64         `json:"c3xx"`
-	C4xx        *int64         `json:"c4xx"`
-	C5xx        *int64         `json:"c5xx"`
-	Groups      *int64         `json:"groups"`
-	Occurrences *int64         `json:"occurrences"`
-	Gap         *string        `json:"gap"`
-	Hint        *string        `json:"hint"`
-	Provenance  ProvenanceJSON `json:"provenance"`
+	Source      string           `json:"source"`
+	Project     string           `json:"project"`
+	Service     string           `json:"service"`
+	C2xx        *int64           `json:"c2xx"`
+	C3xx        *int64           `json:"c3xx"`
+	C4xx        *int64           `json:"c4xx"`
+	C5xx        *int64           `json:"c5xx"`
+	Groups      *int64           `json:"groups"`
+	Occurrences *int64           `json:"occurrences"`
+	ByCode      map[string]int64 `json:"by_code"`
+	LogsURL     *string          `json:"logs_url"`
+	Gap         *string          `json:"gap"`
+	Hint        *string          `json:"hint"`
+	Provenance  ProvenanceJSON   `json:"provenance"`
 }
 
 // ErrorRowToJSON converts an error row to its wire form.
 func ErrorRowToJSON(r gcpsource.ErrorRow) ErrorRowJSON {
 	return ErrorRowJSON{Source: r.Source, Project: r.Project, Service: r.Service,
-		C2xx: r.C2xx, C3xx: r.C3xx, C4xx: r.C4xx, C5xx: r.C5xx, Groups: r.Groups, Occurrences: r.Occurrences,
+		C2xx: r.C2xx, C3xx: r.C3xx, C4xx: r.C4xx, C5xx: r.C5xx, Groups: r.Groups, Occurrences: r.Occurrences, ByCode: r.ByCode,
 		Gap: strPtr(r.Gap), Hint: strPtr(r.Hint), Provenance: ProvenanceToJSON(r.Provenance)}
 }

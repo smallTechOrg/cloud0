@@ -30,9 +30,10 @@ import {
   putSettings,
   toApiError,
 } from '@/lib/api';
+import { CurrencyContext } from '@/lib/currency';
 import { buildCsv, csvFilename, downloadTextFile } from '@/lib/csv';
 import { FALLBACK_COLUMNS } from '@/lib/fallbackColumns';
-import { formatBytes, formatDurationMs, formatInteger, formatTimeZ } from '@/lib/format';
+import { DEFAULT_CURRENCY, formatBytes, formatDurationMs, formatInteger, formatTimeZ } from '@/lib/format';
 import { TABS, tabById, tabFromHash, type TabId } from '@/lib/tabs';
 import {
   SCOPE_ALL,
@@ -210,8 +211,8 @@ export default function Page() {
   }, [config]);
 
   const saveThresholds = useCallback(
-    async (pct: number, absUsd: number) => {
-      const saved = await putSettings({ anomaly_pct_threshold: pct, anomaly_abs_threshold_usd: absUsd });
+    async (pct: number, absThreshold: number) => {
+      const saved = await putSettings({ anomaly_pct_threshold: pct, anomaly_abs_threshold_usd: absThreshold });
       setSettings(saved);
       reloadTable();
     },
@@ -373,7 +374,7 @@ export default function Page() {
     if (!config) return;
     const from = table?.from ?? config.first_week;
     const to = table?.to ?? config.current_week;
-    downloadTextFile(csvFilename(scope, from, to), buildCsv([...columns], rows));
+    downloadTextFile(csvFilename(scope, from, to, config.currency), buildCsv([...columns], rows));
   }, [config, table, scope, columns, rows]);
 
   // ---- derived view data --------------------------------------------------
@@ -413,6 +414,7 @@ export default function Page() {
   const activeTab = tabById(tab);
 
   return (
+    <CurrencyContext.Provider value={config?.currency ?? DEFAULT_CURRENCY}>
     <div className={styles.shell}>
       <TopBar
         config={config}
@@ -455,7 +457,7 @@ export default function Page() {
             <>
               <div className={styles.toolbar} data-testid="cost-toolbar">
                 <div className={styles.toolbarTitle}>
-                  Cost by service — USD, net of credits
+                  Cost by service — {config?.currency ?? '…'}, net of credits
                   {config ? (
                     <span className={styles.toolbarMeta}>
                       {' '}
@@ -535,5 +537,6 @@ export default function Page() {
         {TABS.filter((t) => t.phase > 1).length} tabs and the two vendor columns are labelled stubs until their phase lands.
       </footer>
     </div>
+    </CurrencyContext.Provider>
   );
 }

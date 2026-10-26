@@ -61,7 +61,7 @@ func monthDelta(cur, prev float64, th costtable.Thresholds) (*float64, *float64,
 		return &abs, nil, false
 	}
 	pct := abs / math.Abs(prev) * 100
-	flagged := abs != 0 && math.Abs(abs) >= th.AbsUSD && math.Abs(pct) >= th.Pct
+	flagged := abs != 0 && math.Abs(abs) >= th.Abs && math.Abs(pct) >= th.Pct
 	return &abs, &pct, flagged
 }
 

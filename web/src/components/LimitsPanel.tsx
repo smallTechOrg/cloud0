@@ -147,7 +147,7 @@ export function LimitsView({ data, onSave, initialEdit = null, initialWarn = nul
                   <th scope="row" className={tableStyles.weekCell}>
                     <div className={tableStyles.weekId}>{l.label}</div>
                     <div className={tableStyles.weekMeta}>{l.service}</div>
-                    {l.stub && l.reason ? (
+                    {l.reason ? (
                       <div className={styles.reason} data-testid={`limit-reason-${l.id}`}>
                         {l.reason}
                       </div>

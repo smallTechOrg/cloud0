@@ -37,7 +37,7 @@ func TestCostTable_EmptyStoreListsEveryWeekWithNullCellsAndFixedColumns(t *testi
 		t.Fatalf("header = %v", m)
 	}
 	th := m["thresholds"].(map[string]any)
-	if num(th["pct"]) != 20 || num(th["abs_usd"]) != 50 {
+	if num(th["pct"]) != 20 || num(th["abs_usd"]) != 200 {
 		t.Fatalf("thresholds = %v", th)
 	}
 	wantKeys := []string{"week", "compute_engine", "networking", "cloud_sql", "gemini_api", "cloud_run", "gcs", "vm_manager", "cloud_build", "cloud_logging", "secret_manager", "artifact_registry", "total", "pct_change", "stub:groq", "stub:claude"}
@@ -79,6 +79,10 @@ func TestCostTable_EmptyStoreListsEveryWeekWithNullCellsAndFixedColumns(t *testi
 func TestCostTable_RefreshedWeeksHaveCellsDeltasExtraColumnsScopeAndAnnotation(t *testing.T) {
 	now := phase1Now
 	f := newPhase1Fixture(t, &fakeSource{rows: phase1Rows}, &now)
+	// The seeded default is 20 % / 200 (INR); these fixtures use small amounts, so pin 20 % / 50.
+	if res, _, _ := f.doJSON(t, http.MethodPut, "/api/v1/settings", `{"anomaly_pct_threshold":20,"anomaly_abs_threshold_usd":50}`); res.StatusCode != 200 {
+		t.Fatal("settings PUT failed")
+	}
 	f.refreshWeek(t, "2026-W41")
 	f.refreshWeek(t, "2026-W42")
 	if res, _, _ := f.doJSON(t, http.MethodPut, "/api/v1/annotations/2026-W42", `{"body":"LB added"}`); res.StatusCode != 200 {
@@ -107,7 +111,7 @@ func TestCostTable_RefreshedWeeksHaveCellsDeltasExtraColumnsScopeAndAnnotation(t
 	if math.Abs(num(cells["total"]["net"])-315) > 1e-9 {
 		t.Fatalf("total = %v", cells["total"])
 	}
-	// Deltas vs W41 (compute 100 → 190: Δ 90, 90 % → flagged at 20 %/$50; total 140 → 315).
+	// Deltas vs W41 (compute 100 → 190: Δ 90, 90 % → flagged at the pinned 20 % / 50; total 140 → 315).
 	ce := cells["compute_engine"]
 	if math.Abs(num(ce["delta_abs"])-90) > 1e-9 || math.Abs(num(ce["delta_pct"])-90) > 1e-9 || ce["flagged"] != true {
 		t.Fatalf("compute_engine deltas = %v", ce)

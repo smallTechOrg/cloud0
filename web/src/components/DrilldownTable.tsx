@@ -1,3 +1,4 @@
+import { useCurrency } from '@/lib/currency';
 import { useEffect, useState } from 'react';
 import { ApiError, getBreakdown, toApiError } from '@/lib/api';
 import { formatInteger, formatMoney, formatSignedMoney } from '@/lib/format';
@@ -30,6 +31,7 @@ const MISMATCH_TOLERANCE = 0.01;
 const GLOBAL_NAME_MAX = 48;
 
 export function DrilldownTable({ snapshotId, scope, column, cellNet, columns }: Props) {
+  const currency = useCurrency();
   const initialView: View = column.kind === 'total' ? { level: 'service' } : { level: 'sku' };
   const [view, setView] = useState<View>(initialView);
   const [sections, setSections] = useState<Section[] | null>(null);
@@ -118,7 +120,7 @@ export function DrilldownTable({ snapshotId, scope, column, cellNet, columns }: 
         <>
           {mismatch && totals ? (
             <p className={styles.mismatch} role="alert" data-testid="drilldown-mismatch">
-              mismatch: rows sum to {formatMoney(totals.net)} but the cell shows {formatMoney(expected)} — this should never happen;
+              mismatch: rows sum to {formatMoney(totals.net, currency)} but the cell shows {formatMoney(expected, currency)} — this should never happen;
               please report it with the snapshot id.
             </p>
           ) : null}
@@ -173,10 +175,10 @@ export function DrilldownTable({ snapshotId, scope, column, cellNet, columns }: 
                   <th scope="row" colSpan={view.level === 'sku' ? 1 : view.level === 'service' ? 2 : 3}>
                     Total
                   </th>
-                  <td className={styles.num}>{formatMoney(totals.gross)}</td>
-                  <td className={styles.num}>{formatSignedMoney(totals.credits)}</td>
+                  <td className={styles.num}>{formatMoney(totals.gross, currency)}</td>
+                  <td className={styles.num}>{formatSignedMoney(totals.credits, currency)}</td>
                   <td className={`${styles.num} ${mismatch ? styles.mismatchCell : ''}`} data-testid="drilldown-total-net">
-                    {formatMoney(totals.net)}
+                    {formatMoney(totals.net, currency)}
                   </td>
                   {view.level === 'sku' ? <td /> : null}
                 </tr>
@@ -198,6 +200,7 @@ interface SectionRowsProps {
 }
 
 function SectionRows({ section, view, columns, colSpan, onSku }: SectionRowsProps) {
+  const currency = useCurrency();
   return (
     <>
       {section.heading ? (
@@ -243,10 +246,10 @@ function SectionRows({ section, view, columns, colSpan, onSku }: SectionRowsProp
               </td>
             </>
           )}
-          <td className={styles.num}>{formatMoney(row.gross)}</td>
-          <td className={styles.num}>{formatSignedMoney(row.credits)}</td>
+          <td className={styles.num}>{formatMoney(row.gross, currency)}</td>
+          <td className={styles.num}>{formatSignedMoney(row.credits, currency)}</td>
           <td className={styles.num} data-testid="drilldown-row-net">
-            {formatMoney(row.net)}
+            {formatMoney(row.net, currency)}
           </td>
           {view.level === 'sku' ? <td className={styles.num}>{formatInteger(row.line_items)}</td> : null}
         </tr>

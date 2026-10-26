@@ -6,7 +6,7 @@ Stores a monthly net-cost target per product (and an overall target) and shows m
 ## Inputs
 | Input | Type | Source | Required |
 |---|---|---|---|
-| Targets | `targets` (migration 0003): product (or `*` for overall), month_from, amount_usd | user (Targets tab) | yes |
+| Targets | `targets` (migration 0003): product (or `*` for overall), month_from, amount_usd (legacy name; currency units) | user (Targets tab) | yes |
 | Month cost by product | `month-view.md` × `product-env-breakdown.md` | store | yes |
 
 ## Outputs

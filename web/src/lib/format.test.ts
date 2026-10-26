@@ -5,6 +5,7 @@ import {
   formatDurationMs,
   formatInteger,
   formatMoney,
+  formatSignedMoney,
   formatPct,
   formatThreshold,
   formatTimeZ,
@@ -12,14 +13,27 @@ import {
 } from './format';
 
 describe('formatMoney', () => {
-  it('renders 2 decimals, zero as 0.00 and negatives in parentheses', () => {
-    expect(formatMoney(1191.69)).toBe('1191.69');
-    expect(formatMoney(0)).toBe('0.00');
-    expect(formatMoney(-193.51)).toBe('(193.51)');
-    expect(formatMoney(-0.001)).toBe('0.00');
+  it('renders INR by default with en-IN grouping, 2 decimals and negatives in parentheses', () => {
+    expect(formatMoney(1191.69)).toBe('₹1,191.69');
+    expect(formatMoney(0)).toBe('₹0.00');
+    expect(formatMoney(-193.51)).toBe('(₹193.51)');
+    expect(formatMoney(-0.001)).toBe('₹0.00');
   });
-  it('optionally groups thousands', () => {
-    expect(formatMoney(1191.69, { grouped: true })).toBe('1,191.69');
+  it('uses lakh/crore grouping for INR', () => {
+    expect(formatMoney(1234567.5, 'INR')).toBe('₹12,34,567.50');
+  });
+  it('follows the configured currency', () => {
+    expect(formatMoney(1191.69, 'USD')).toContain('1,191.69');
+    expect(formatMoney(1191.69, 'USD')).not.toContain('₹');
+    expect(formatMoney(5, 'EUR')).toContain('€');
+  });
+});
+
+describe('formatSignedMoney', () => {
+  it('prefixes the sign before the symbol', () => {
+    expect(formatSignedMoney(50)).toBe('+₹50.00');
+    expect(formatSignedMoney(-50)).toBe('−₹50.00');
+    expect(formatSignedMoney(0)).toBe('₹0.00');
   });
 });
 
@@ -34,9 +48,9 @@ describe('formatPct', () => {
 
 describe('formatDelta', () => {
   it('shows direction marker, abs and pct', () => {
-    expect(formatDelta(423.89, 25.36)).toBe('▲ +423.89 (+25.4 %)');
-    expect(formatDelta(-50, -10)).toBe('▼ −50.00 (−10.0 %)');
-    expect(formatDelta(80, null)).toBe('▲ +80.00');
+    expect(formatDelta(423.89, 25.36)).toBe('▲ +₹423.89 (+25.4 %)');
+    expect(formatDelta(-50, -10)).toBe('▼ −₹50.00 (−10.0 %)');
+    expect(formatDelta(80, null)).toBe('▲ +₹80.00');
   });
 });
 

@@ -16,7 +16,7 @@ function month(overrides: Partial<Parameters<typeof MonthView>[0]> = {}) {
 describe('MonthView', () => {
   it('renders rows in column order with badges and the summary line', () => {
     const html = month();
-    expect(html).toContain('Current month net 812.40 · target 2,500.00 · projected 2,210.90');
+    expect(html).toContain('Current month net ₹812.40 · target ₹2,500.00 · projected ₹2,210.90');
     const heads = ['Month', 'Compute Engine', 'Networking', 'Total GCP', '% change'].map((h) => html.indexOf(`>${h}<`));
     expect(heads.every((i) => i > 0)).toBe(true);
     expect([...heads].sort((a, b) => a - b)).toEqual(heads);

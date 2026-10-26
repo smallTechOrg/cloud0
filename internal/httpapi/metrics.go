@@ -27,6 +27,8 @@ type metricRowJSON struct {
 	Project  string                `json:"project"`
 	Resource string                `json:"resource"`
 	Cells    map[string]metricCell `json:"cells"`
+	// IsTotal marks the group's TOTAL row (assembled server-side).
+	IsTotal bool `json:"is_total"`
 }
 
 type metricGroupJSON struct {
@@ -105,6 +107,7 @@ func (d Deps) handleMetricsTable(w http.ResponseWriter, r *http.Request) *APIErr
 			g.Columns = append(g.Columns, metricColumnJSON{Key: c.Key, Label: c.Label, Unit: c.Unit})
 		}
 		if has {
+			var aggs []metricRowJSON
 			if spec.Group == gcpsource.GroupErrors {
 				for _, er := range errRows {
 					if er.Source != gcpsource.ErrSrcCloudRun {
@@ -113,12 +116,11 @@ func (d Deps) handleMetricsTable(w http.ResponseWriter, r *http.Request) *APIErr
 					g.Rows = append(g.Rows, errorsGroupRow(er, spec, levels))
 				}
 			} else {
-				for _, mr := range stored {
-					if mr.Group != spec.Group || (scope != store.ScopeAll && mr.Project != scope) {
-						continue
-					}
-					g.Rows = append(g.Rows, metricRow(mr, spec, levels))
-				}
+				g.Rows, aggs = metricGroupRows(stored, spec, scope, levels)
+			}
+			g.Rows = withTotalRow(g.Rows, aggs, spec, levels)
+			if g.Rows == nil {
+				g.Rows = []metricRowJSON{}
 			}
 		}
 		resp.Groups = append(resp.Groups, g)

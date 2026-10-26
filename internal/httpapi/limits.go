@@ -120,6 +120,10 @@ func (d Deps) evaluateLimits(ctx context.Context, week isoweek.Week, now time.Ti
 	for i, a := range allowances {
 		e := limitEntry{ID: a.ID, Service: a.Service, Label: a.Label, Unit: a.Unit, Allowance: a.Monthly,
 			DefaultAllowance: defaults[i].Monthly, Stub: a.Stub}
+		if !a.Stub && a.Reason != "" {
+			note := a.Reason
+			e.Reason = &note
+		}
 		if a.Stub {
 			st := limits.NoData(a)
 			e.Level = st.Level

@@ -164,14 +164,34 @@ func ruleFor(metric string) Rule {
 	return Rule{}
 }
 
+// perResourceMetrics lists the per-service metrics of the Cloud Run group in
+// column order (rules with PerResource set).
+var perResourceMetrics = []string{
+	gcpsource.MServiceMemActiveGiBs, gcpsource.MServiceMemIdleGiBs,
+	gcpsource.MServiceCPUActiveSec, gcpsource.MServiceCPUIdleSec,
+}
+
+// serviceName reduces a billing resource.name to the Cloud Run service name
+// (a defensive trim of any "projects/.../services/" style prefix).
+func serviceName(resource string) string {
+	if i := strings.LastIndex(resource, "/"); i >= 0 {
+		resource = resource[i+1:]
+	}
+	return strings.TrimSpace(resource)
+}
+
 // Aggregate classifies rows and returns one MetricRow (Resource "") per
-// project and group that has at least one classified billing line. Cells of
-// such a row with no matching lines are gaps ("not billed" for inbound,
-// "no data" otherwise), never zeros. skipped counts lines whose SKU matched
-// but whose pricing unit was unexpected.
+// project and group that has at least one classified project-level billing
+// line, followed by one MetricRow per Cloud Run service (Resource = service)
+// carrying the active / idle memory and CPU cells. Cells of such a row with
+// no matching lines are gaps ("not billed" for inbound, "no data" otherwise),
+// never zeros. skipped counts lines whose SKU matched but whose pricing unit
+// was unexpected.
 func Aggregate(rows []UsageRow, p gcpsource.Provenance) (out []gcpsource.MetricRow, skipped int) {
 	type key struct{ project, group string }
+	type skey struct{ project, service string }
 	sums := map[key]map[string]float64{}
+	svcSums := map[skey]map[string]float64{}
 	for _, r := range rows {
 		rule, ok := Classify(r.Service.StringVal, r.SKU.StringVal)
 		if !ok {
@@ -179,6 +199,18 @@ func Aggregate(rows []UsageRow, p gcpsource.Provenance) (out []gcpsource.MetricR
 		}
 		if r.PricingUnit.StringVal != rule.PricingUnit {
 			skipped++
+			continue
+		}
+		if rule.PerResource {
+			svc := serviceName(r.ResourceName.StringVal)
+			if svc == "" {
+				continue
+			}
+			k := skey{r.ProjectID.StringVal, svc}
+			if svcSums[k] == nil {
+				svcSums[k] = map[string]float64{}
+			}
+			svcSums[k][rule.Metric] += r.Usage.Float64
 			continue
 		}
 		k := key{r.ProjectID.StringVal, rule.Group}
@@ -216,6 +248,29 @@ func Aggregate(rows []UsageRow, p gcpsource.Provenance) (out []gcpsource.MetricR
 				} else {
 					row.Cells[m] = gcpsource.G(GapNoData, HintNoData, rule.Unit, p)
 				}
+			}
+		}
+		out = append(out, row)
+	}
+
+	skeys := make([]skey, 0, len(svcSums))
+	for k := range svcSums {
+		skeys = append(skeys, k)
+	}
+	sort.Slice(skeys, func(i, j int) bool {
+		if skeys[i].project != skeys[j].project {
+			return skeys[i].project < skeys[j].project
+		}
+		return skeys[i].service < skeys[j].service
+	})
+	for _, k := range skeys {
+		row := gcpsource.MetricRow{Group: gcpsource.GroupCloudRun, Project: k.project, Resource: k.service, Cells: map[string]gcpsource.Cell{}}
+		for _, m := range perResourceMetrics {
+			rule := ruleFor(m)
+			if v, ok := svcSums[k][m]; ok {
+				row.Cells[m] = gcpsource.V(v, rule.Unit, p)
+			} else {
+				row.Cells[m] = gcpsource.G(GapNoData, HintNoData, rule.Unit, p)
 			}
 		}
 		out = append(out, row)

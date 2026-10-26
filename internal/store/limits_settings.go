@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// KeyMonthlyTarget is the Month view's monthly total target (USD); absent = no target.
+// KeyMonthlyTarget is the Month view's monthly total target (in the configured CLOUD0_CURRENCY); absent = no target.
 const KeyMonthlyTarget = "target.monthly_total"
 
 // GetSettingsWithPrefix returns every settings row whose key starts with

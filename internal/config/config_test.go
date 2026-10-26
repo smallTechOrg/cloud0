@@ -35,7 +35,7 @@ func TestLoad_AppliesDefaultsForOptionalVariables(t *testing.T) {
 	if cfg.FirstWeek.String() != "2026-W18" || cfg.SmokeWeek.String() != "2026-W42" {
 		t.Errorf("weeks = %s %s", cfg.FirstWeek, cfg.SmokeWeek)
 	}
-	if cfg.SettleHours != 48 || cfg.PartitionMarginDays != 1 || cfg.LogLevel != "info" || cfg.E2EPort != 8097 {
+	if cfg.SettleHours != 48 || cfg.PartitionMarginDays != 1 || cfg.LogLevel != "info" || cfg.E2EPort != 8097 || cfg.Currency != "INR" {
 		t.Errorf("optional defaults wrong: %+v", cfg)
 	}
 	if cfg.CredentialsPath != "" || cfg.BillingAccountID != "" {
@@ -56,6 +56,7 @@ func TestLoad_ReadsEveryVariable(t *testing.T) {
 	m["CLOUD0_LOG_LEVEL"] = "DEBUG"
 	m["CLOUD0_SMOKE_WEEK"] = "2026-W40"
 	m["CLOUD0_E2E_PORT"] = "8111"
+	m["CLOUD0_CURRENCY"] = "usd"
 	cfg, err := Load(env(m))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -69,7 +70,7 @@ func TestLoad_ReadsEveryVariable(t *testing.T) {
 	if cfg.FirstWeek.String() != "2026-W20" || cfg.SettleHours != 72 || cfg.PartitionMarginDays != 2 {
 		t.Errorf("week/settle not read: %+v", cfg)
 	}
-	if cfg.LogLevel != "debug" || cfg.SmokeWeek.String() != "2026-W40" || cfg.E2EPort != 8111 {
+	if cfg.LogLevel != "debug" || cfg.SmokeWeek.String() != "2026-W40" || cfg.E2EPort != 8111 || cfg.Currency != "USD" {
 		t.Errorf("level/smoke/e2e not read: %+v", cfg)
 	}
 }
@@ -133,6 +134,9 @@ func TestLoad_RejectsInvalidValues(t *testing.T) {
 		{"margin negative", "CLOUD0_PARTITION_MARGIN_DAYS", "-2"},
 		{"log level unknown", "CLOUD0_LOG_LEVEL", "verbose"},
 		{"smoke week bad", "CLOUD0_SMOKE_WEEK", "W42"},
+		{"currency too long", "CLOUD0_CURRENCY", "RUPEES"},
+		{"currency digits", "CLOUD0_CURRENCY", "I2R"},
+		{"currency symbol", "CLOUD0_CURRENCY", "₹"},
 		{"e2e port bad", "CLOUD0_E2E_PORT", "99999"},
 	}
 	for _, c := range cases {

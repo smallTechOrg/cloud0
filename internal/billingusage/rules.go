@@ -30,6 +30,9 @@ type Rule struct {
 	Pattern     string
 	PricingUnit string // expected usage.pricing_unit; other units are skipped
 	Why         string // why these SKUs reproduce the sheet's column
+	// PerResource rules emit one row per billing resource.name (the Cloud Run
+	// service) instead of one project-level row.
+	PerResource bool
 }
 
 // Rules is the SKU → cell classification, derived from the real SKU
@@ -70,6 +73,30 @@ var Rules = []Rule{
 		Services: []string{"Cloud Storage"}, Match: MatchExact,
 		Pattern: "Download APAC", PricingUnit: "gibibyte",
 		Why: "Cloud Storage internet download billed to APAC destinations",
+	},
+	{
+		Group: gcpsource.GroupCloudRun, Metric: gcpsource.MServiceMemActiveGiBs, Unit: "GiB-s",
+		Services: []string{"Cloud Run"}, Match: MatchExact,
+		Pattern: "Services Memory (Request-based billing)", PricingUnit: "gibibyte second", PerResource: true,
+		Why: "memory billed while a Cloud Run service is handling requests (active part of the total allocation)",
+	},
+	{
+		Group: gcpsource.GroupCloudRun, Metric: gcpsource.MServiceMemIdleGiBs, Unit: "GiB-s",
+		Services: []string{"Cloud Run"}, Match: MatchExact,
+		Pattern: "Services Min Instance Memory (Request-based billing)", PricingUnit: "gibibyte second", PerResource: true,
+		Why: "memory of idle minimum instances; active + idle = the Monitoring total, which the free tier consumes",
+	},
+	{
+		Group: gcpsource.GroupCloudRun, Metric: gcpsource.MServiceCPUActiveSec, Unit: "vCPU-s",
+		Services: []string{"Cloud Run"}, Match: MatchExact,
+		Pattern: "Services CPU (Request-based billing)", PricingUnit: "second", PerResource: true,
+		Why: "vCPU-seconds billed while a Cloud Run service is handling requests",
+	},
+	{
+		Group: gcpsource.GroupCloudRun, Metric: gcpsource.MServiceCPUIdleSec, Unit: "vCPU-s",
+		Services: []string{"Cloud Run"}, Match: MatchExact,
+		Pattern: "Services Min Instance CPU (Request-based billing)", PricingUnit: "second", PerResource: true,
+		Why: "vCPU-seconds of idle minimum instances",
 	},
 }
 

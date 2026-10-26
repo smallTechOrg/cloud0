@@ -24,7 +24,7 @@ Fills the Cost table's two vendor columns and the "Groq errors" metrics row with
 
 ## Business Rules
 - Vendors are read-only integrations; keys live in `.env` only.
-- Column semantics: `AI Cost (Groq)` = USD; `claude (usage)` = the unit the runner reports (documented in the column tooltip).
+- Column semantics: `AI Cost (Groq)` = money in the configured currency; `claude (usage)` = the unit the runner reports (documented in the column tooltip).
 - When unconfigured, the columns stay labelled stubs with the hint "set CLOUD0_GROQ_API_KEY" rather than showing 0.
 
 ## Success Criteria

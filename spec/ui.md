@@ -1,6 +1,6 @@
 # cloud0 — UI
 
-One page at `/`, served by the Go binary. Tabs are client-side (`#cost`, `#metrics`, …). Dense, spreadsheet-like, desktop-first (min width 1100 px); plain system font; numbers right-aligned, 2 decimals, USD without symbol (header says "USD, net of credits"). Every surface that is not functional in the current phase is a **labelled stub** rendered with the stub pattern below — never an empty table, never a blank panel.
+One page at `/`, served by the Go binary. Tabs are client-side (`#cost`, `#metrics`, …). Dense, spreadsheet-like, desktop-first (min width 1100 px); plain system font; numbers right-aligned, 2 decimals, amounts formatted by `formatMoney(value, config.currency)` (Intl.NumberFormat, en-IN grouping; the header says "<CURRENCY>, net of credits", e.g. "INR, net of credits"). Every surface that is not functional in the current phase is a **labelled stub** rendered with the stub pattern below — never an empty table, never a blank panel.
 
 ## Layout
 
@@ -55,8 +55,8 @@ One page at `/`, served by the Go binary. Tabs are client-side (`#cost`, `#metri
 ## Cost tab
 
 ### Toolbar (above the table)
-- Left: "Cost by service — USD, net of credits · weeks 2026-W18 → 2026-W44 · scope: All billed projects".
-- Right: **Anomaly thresholds: ≥ 20 % and ≥ $50 [Edit]** → `ThresholdsEditor` popover with two numeric inputs (pct, USD), Save / Cancel; `PUT /settings`; after save the table re-fetches and the label updates. Validation errors shown inline from the error envelope.
+- Left: "Cost by service — INR, net of credits · weeks 2026-W18 → 2026-W44 · scope: All billed projects".
+- Right: **Anomaly thresholds: ≥ 20 % and ≥ ₹200.00 [Edit]** → `ThresholdsEditor` popover with two numeric inputs (pct, currency amount), Save / Cancel; `PUT /settings`; after save the table re-fetches and the label updates. Validation errors shown inline from the error envelope.
 - Right: **Export CSV** → downloads `cloud0-cost-<scope>-<from>-<to>.csv` built client-side from the rendered columns and rows (`spec/capabilities/cost-table.md → CSV`).
 
 ### CostTable
@@ -65,7 +65,7 @@ One page at `/`, served by the Go binary. Tabs are client-side (`#cost`, `#metri
 - The picked week's row is highlighted.
 - **Not-fetched rows:** the cells are replaced by one spanning cell reading "not fetched — Refresh" where "Refresh" is a link that triggers `POST /refresh` for that week. Never zeros.
 - **Numeric cells:** 2 dp; zero rendered `0.00`; negative in parentheses. Hover shows gross and credits ("gross 596.92 · credits −193.51"). Click → opens the Cell Inspector for (snapshot, column).
-- **Anomaly flag:** cells with `flagged: true` get a red left border and a "▲ +423.89 (+25.4 %)" / "▼" marker under the value; a flagged row shows a red dot beside the week id. Tooltip: "change vs 2026-W41 exceeds thresholds (≥ 20 % and ≥ $50)".
+- **Anomaly flag:** cells with `flagged: true` get a red left border and a "▲ +423.89 (+25.4 %)" / "▼" marker under the value; a flagged row shows a red dot beside the week id. Tooltip: "change vs 2026-W41 exceeds thresholds (≥ 20 % and ≥ ₹200.00)".
 - **% change:** `+25.4 %` / `−3.1 %`; `—` when null, tooltip "previous week not fetched".
 - **Stub columns:** header "AI Cost (Groq) (stub)", "claude (usage) (stub)"; cells "—".
 - Empty state (no snapshot at all): a callout above the table — "No weeks fetched yet. Click **Refresh all weeks** to load 2026-W18 → 2026-W44 from BigQuery in one query (≈10–30 s)." The table still renders every row as "not fetched — Refresh".

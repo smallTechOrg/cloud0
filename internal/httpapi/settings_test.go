@@ -14,7 +14,7 @@ func TestSettings_DefaultsThenPutRoundTripSurvivesReopen(t *testing.T) {
 	f := newPhase1Fixture(t, &fakeSource{}, &now)
 
 	res, m, raw := f.doJSON(t, http.MethodGet, "/api/v1/settings", "")
-	if res.StatusCode != 200 || num(m["anomaly_pct_threshold"]) != 20 || num(m["anomaly_abs_threshold_usd"]) != 50 || m["updated_at"] == nil {
+	if res.StatusCode != 200 || num(m["anomaly_pct_threshold"]) != 20 || num(m["anomaly_abs_threshold_usd"]) != 200 || m["updated_at"] == nil {
 		t.Fatalf("defaults = %d %s", res.StatusCode, raw)
 	}
 	if len(m) != 3 {
@@ -79,7 +79,7 @@ func TestSettings_PutRejectsInvalidValues(t *testing.T) {
 		})
 	}
 	_, m, _ := f.doJSON(t, http.MethodGet, "/api/v1/settings", "")
-	if num(m["anomaly_pct_threshold"]) != 20 || num(m["anomaly_abs_threshold_usd"]) != 50 {
+	if num(m["anomaly_pct_threshold"]) != 20 || num(m["anomaly_abs_threshold_usd"]) != 200 {
 		t.Fatalf("rejected PUTs must not change settings: %v", m)
 	}
 	res, m, _ := f.doJSON(t, http.MethodDelete, "/api/v1/settings", "")

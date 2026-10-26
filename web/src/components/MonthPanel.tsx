@@ -1,3 +1,4 @@
+import { useCurrency } from '@/lib/currency';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ApiError, getMonth, getRun, refreshMonth, toApiError } from '@/lib/api';
 import { downloadTextFile } from '@/lib/csv';
@@ -26,11 +27,12 @@ export interface MonthViewProps {
 }
 
 export function MonthView({ data, selection, onCellClick, onRefreshMonth, refreshDisabled }: MonthViewProps) {
+  const currency = useCurrency();
   const dataColumns = data.columns.filter((c) => c.kind !== 'month');
   return (
     <>
       <p className={styles.summary} data-testid="month-summary">
-        {formatSummaryLine(data.summary)} <StatusBadge status={data.summary.status} />
+        {formatSummaryLine(data.summary, currency)} <StatusBadge status={data.summary.status} />
       </p>
       {!data.summary.has_data ? (
         <EmptyState title={`No data for ${data.summary.month} yet`} testId="month-empty">
@@ -40,7 +42,7 @@ export function MonthView({ data, selection, onCellClick, onRefreshMonth, refres
       <div className={tableStyles.scroller}>
         <table className={tableStyles.table} data-testid="month-table">
           <caption className={tableStyles.caption}>
-            Cost by service per calendar month (UTC) · USD, net of credits · click a number for provenance.
+            Cost by service per calendar month (UTC) · {currency}, net of credits · click a number for provenance.
           </caption>
           <thead>
             <tr>
@@ -101,6 +103,7 @@ export function MonthView({ data, selection, onCellClick, onRefreshMonth, refres
 }
 
 function MonthDataCell({ row, column, thresholds, onClick }: { row: MonthRow; column: MonthColumn; thresholds: Thresholds; onClick: (r: MonthRow, c: MonthColumn) => void }) {
+  const currency = useCurrency();
   if (column.kind === 'stub') {
     return (
       <td className={`${tableStyles.num} ${tableStyles.stubCell}`} title={`Arrives in Phase ${column.phase ?? '?'}`}>
@@ -138,13 +141,13 @@ function MonthDataCell({ row, column, thresholds, onClick }: { row: MonthRow; co
         type="button"
         className={tableStyles.cellButton}
         data-testid={`month-cell-${row.month}-${column.key}`}
-        aria-label={`${row.month} ${column.label} ${formatMoney(cell.net)}, open provenance`}
-        title={`gross ${formatMoney(cell.gross)} · credits ${formatSignedMoney(cell.credits)}${
-          cell.flagged ? ` · change exceeds thresholds (≥ ${formatThreshold(thresholds.pct)} % and ≥ $${formatThreshold(thresholds.abs_usd)})` : ''
+        aria-label={`${row.month} ${column.label} ${formatMoney(cell.net, currency)}, open provenance`}
+        title={`gross ${formatMoney(cell.gross, currency)} · credits ${formatSignedMoney(cell.credits, currency)}${
+          cell.flagged ? ` · change exceeds thresholds (≥ ${formatThreshold(thresholds.pct)} % and ≥ ${formatMoney(thresholds.abs_usd, currency)})` : ''
         }`}
         onClick={() => onClick(row, column)}
       >
-        <span>{formatMoney(cell.net)}</span>
+        <span>{formatMoney(cell.net, currency)}</span>
       </button>
     </td>
   );
@@ -165,11 +168,12 @@ function monthSource(run: Run | null): RunSource | null {
 }
 
 export function MonthProvenance({ selection, run, error, onClose }: MonthProvenanceProps) {
+  const currency = useCurrency();
   const { row, column } = selection;
   const snap = row.snapshot;
   const src = monthSource(run);
   const cell = row.cells?.[column.key];
-  const value = column.kind === 'pct_change' ? formatPct(row.pct_change) : cell ? formatMoney(cell.net, { grouped: true }) : '—';
+  const value = column.kind === 'pct_change' ? formatPct(row.pct_change) : cell ? formatMoney(cell.net, currency) : '—';
   return (
     <section className={styles.provenance} aria-label="Month provenance" data-testid="month-provenance">
       <header className={styles.provHead}>
@@ -246,6 +250,7 @@ interface Props {
 }
 
 export default function MonthPanel({ scope, refreshToken }: Props) {
+  const currency = useCurrency();
   const [month, setMonth] = useState<MonthID>(() => currentMonthId(new Date()));
   const [data, setData] = useState<MonthTableResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -326,7 +331,7 @@ export default function MonthPanel({ scope, refreshToken }: Props) {
 
   function exportCsv() {
     if (!data) return;
-    downloadTextFile(monthCsvFilename(data.scope, data.from, data.to), buildMonthCsv(data.columns, data.rows));
+    downloadTextFile(monthCsvFilename(data.scope, data.from, data.to, currency), buildMonthCsv(data.columns, data.rows));
   }
 
   return (

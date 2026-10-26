@@ -24,6 +24,7 @@ const CloudRunFilter = `metric.type="run.googleapis.com/request_count" AND resou
 const (
 	crGroupService = "resource.labels.service_name"
 	crGroupClass   = "metric.labels.response_code_class"
+	crGroupCode    = "metric.labels.response_code"
 )
 
 // CloudRunQuery is the window-aligned request_count query for one project,
@@ -39,7 +40,20 @@ func CloudRunQuery(project string, w gcpsource.Window, groupBy []string) monitor
 	}
 }
 
-type crClassCounts struct{ c2, c3, c4, c5 int64 }
+type crClassCounts struct {
+	c2, c3, c4, c5 int64
+	byCode         map[string]int64
+}
+
+func (c *crClassCounts) addCode(code string, n int64) {
+	if code == "" {
+		return
+	}
+	if c.byCode == nil {
+		c.byCode = map[string]int64{}
+	}
+	c.byCode[code] += n
+}
 
 func (c *crClassCounts) add(class string, n int64) bool {
 	switch class {
@@ -62,7 +76,7 @@ func crI64(v int64) *int64 { return &v }
 func (c crClassCounts) row(project, service string, p gcpsource.Provenance) gcpsource.ErrorRow {
 	return gcpsource.ErrorRow{
 		Source: gcpsource.ErrSrcCloudRun, Project: project, Service: service,
-		C2xx: crI64(c.c2), C3xx: crI64(c.c3), C4xx: crI64(c.c4), C5xx: crI64(c.c5),
+		C2xx: crI64(c.c2), C3xx: crI64(c.c3), C4xx: crI64(c.c4), C5xx: crI64(c.c5), ByCode: c.byCode,
 		Provenance: p,
 	}
 }
@@ -80,7 +94,7 @@ func FetchCloudRun(ctx context.Context, l monitoring.Lister, projects []string, 
 	var failed []string
 	ok := 0
 	for _, project := range projects {
-		q := CloudRunQuery(project, w, []string{crGroupService, crGroupClass})
+		q := CloudRunQuery(project, w, []string{crGroupService, crGroupClass, crGroupCode})
 		series, err := q.Run(ctx, l)
 		prov := q.Provenance(SourceCloudRun, now())
 		res.Provenance = append(res.Provenance, prov)
@@ -124,7 +138,10 @@ func cloudRunRows(project string, series []*monitoringpb.TimeSeries, prov gcpsou
 			c = &crClassCounts{}
 			byService[svc] = c
 		}
-		c.add(monitoring.Label(ts, "response_code_class"), int64(math.Round(monitoring.Value(ts))))
+		n := int64(math.Round(monitoring.Value(ts)))
+		if c.add(monitoring.Label(ts, "response_code_class"), n) {
+			c.addCode(monitoring.Label(ts, "response_code"), n)
+		}
 	}
 	if len(byService) == 0 {
 		return nil
@@ -142,6 +159,9 @@ func cloudRunRows(project string, series []*monitoringpb.TimeSeries, prov gcpsou
 		total.c3 += c.c3
 		total.c4 += c.c4
 		total.c5 += c.c5
+		for code, n := range c.byCode {
+			total.addCode(code, n)
+		}
 		rows = append(rows, c.row(project, s, prov))
 	}
 	return append(rows, total.row(project, "", prov))

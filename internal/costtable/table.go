@@ -12,13 +12,13 @@ import (
 
 // Thresholds is the anomaly rule's pair as echoed in the table response.
 type Thresholds struct {
-	Pct    float64 `json:"pct"`
-	AbsUSD float64 `json:"abs_usd"`
+	Pct float64 `json:"pct"`
+	Abs float64 `json:"abs_usd"`
 }
 
 // ThresholdsFrom projects the stored settings onto the table shape.
 func ThresholdsFrom(s store.Settings) Thresholds {
-	return Thresholds{Pct: s.AnomalyPctThreshold, AbsUSD: s.AnomalyAbsThresholdUSD}
+	return Thresholds{Pct: s.AnomalyPctThreshold, Abs: s.AnomalyAbsThreshold}
 }
 
 // Cell is one service or total value of a week (spec/api.md → rows[].cells).
@@ -206,8 +206,8 @@ func cellsFor(byKey map[string]agg, valueKeys []string) map[string]agg {
 	return out
 }
 
-// delta implements spec/capabilities/anomaly-flags.md: Δ$ = cur − prev, Δ% is
-// nil when prev is 0, flagged when |Δ$| ≥ abs AND |Δ%| ≥ pct and the change is
+// delta implements spec/capabilities/anomaly-flags.md: Δ = cur − prev, Δ% is
+// nil when prev is 0, flagged when |Δ| ≥ abs AND |Δ%| ≥ pct and the change is
 // non-zero (so thresholds 0/0 flag any change but never a flat week).
 func delta(cur, prev float64, th Thresholds) (*float64, *float64, bool) {
 	abs := cur - prev
@@ -215,7 +215,7 @@ func delta(cur, prev float64, th Thresholds) (*float64, *float64, bool) {
 		return &abs, nil, false
 	}
 	pct := abs / math.Abs(prev) * 100
-	flagged := abs != 0 && math.Abs(abs) >= th.AbsUSD && math.Abs(pct) >= th.Pct
+	flagged := abs != 0 && math.Abs(abs) >= th.Abs && math.Abs(pct) >= th.Pct
 	return &abs, &pct, flagged
 }
 

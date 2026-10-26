@@ -213,6 +213,80 @@ func TestAggregate_MissingNonInboundMetricIsNoDataGap(t *testing.T) {
 	assertVal(t, out[0].Cells[gcpsource.MInboundGB], 0.1, "GB")
 }
 
+func rrow(project, service, sku, unit, resource string, v float64) UsageRow {
+	r := row(project, service, sku, unit, v)
+	r.ResourceName.StringVal, r.ResourceName.Valid = resource, true
+	return r
+}
+
+func TestAggregate_CloudRunActiveIdleSplitPerService(t *testing.T) {
+	const (
+		mem    = "Services Memory (Request-based billing)"
+		memMin = "Services Min Instance Memory (Request-based billing)"
+		cpu    = "Services CPU (Request-based billing)"
+		cpuMin = "Services Min Instance CPU (Request-based billing)"
+	)
+	rows := []UsageRow{
+		rrow("p1", "Cloud Run", mem, "gibibyte second", "svc-b", 10),
+		rrow("p1", "Cloud Run", mem, "gibibyte second", "svc-b", 5),
+		rrow("p1", "Cloud Run", memMin, "gibibyte second", "svc-a", 300),
+		rrow("p1", "Cloud Run", cpu, "second", "svc-a", 7),
+		rrow("p1", "Cloud Run", cpuMin, "second", "svc-a", 600),
+		rrow("p1", "Cloud Run", mem, "second", "svc-b", 999),   // wrong unit → skipped
+		rrow("p1", "Cloud Run", mem, "gibibyte second", "", 1), // no service name → ignored
+		row("p1", "Cloud Run", "Cloud Run Network Internet Data Transfer Out Intercontinental to China", "gibibyte", 0.5),
+	}
+	out, skipped := Aggregate(rows, gcpsource.Provenance{Query: "SQL"})
+	if skipped != 1 {
+		t.Errorf("skipped = %d, want 1", skipped)
+	}
+	if len(out) != 3 {
+		t.Fatalf("rows = %d: %+v", len(out), out)
+	}
+	if out[0].Resource != "" || out[1].Resource != "svc-a" || out[2].Resource != "svc-b" {
+		t.Fatalf("resources = %q %q %q", out[0].Resource, out[1].Resource, out[2].Resource)
+	}
+	a, b := out[1], out[2]
+	for _, r := range out[1:] {
+		if r.Group != gcpsource.GroupCloudRun || r.Project != "p1" || len(r.Cells) != 4 {
+			t.Errorf("service row = %+v", r)
+		}
+	}
+	assertVal(t, a.Cells[gcpsource.MServiceMemIdleGiBs], 300, "GiB-s")
+	assertVal(t, a.Cells[gcpsource.MServiceCPUActiveSec], 7, "vCPU-s")
+	assertVal(t, a.Cells[gcpsource.MServiceCPUIdleSec], 600, "vCPU-s")
+	if c := a.Cells[gcpsource.MServiceMemActiveGiBs]; c.Value != nil || c.Gap != GapNoData {
+		t.Errorf("svc-a active memory = %+v, want no-data gap", c)
+	}
+	assertVal(t, b.Cells[gcpsource.MServiceMemActiveGiBs], 15, "GiB-s")
+	if c := b.Cells[gcpsource.MServiceMemIdleGiBs]; c.Value != nil || c.Gap != GapNoData {
+		t.Errorf("svc-b idle memory = %+v, want no-data gap", c)
+	}
+	assertVal(t, out[0].Cells[gcpsource.MEgressInterGB], 0.5, "GB")
+	if _, has := out[0].Cells[gcpsource.MServiceMemIdleGiBs]; has {
+		t.Error("project-level row must not carry per-service cells")
+	}
+}
+
+func TestClassify_CloudRunActiveIdleSKUs(t *testing.T) {
+	for sku, want := range map[string]string{
+		"Services Memory (Request-based billing)":              gcpsource.MServiceMemActiveGiBs,
+		"Services Min Instance Memory (Request-based billing)": gcpsource.MServiceMemIdleGiBs,
+		"Services CPU (Request-based billing)":                 gcpsource.MServiceCPUActiveSec,
+		"Services Min Instance CPU (Request-based billing)":    gcpsource.MServiceCPUIdleSec,
+		"Services Memory (Instance-based billing)":             "",
+	} {
+		r, ok := Classify("Cloud Run", sku)
+		got := ""
+		if ok {
+			got = r.Metric
+		}
+		if got != want {
+			t.Errorf("Classify(%q) = %q, want %q", sku, got, want)
+		}
+	}
+}
+
 func TestAggregate_EmptyInputYieldsNoRows(t *testing.T) {
 	out, skipped := Aggregate(nil, gcpsource.Provenance{})
 	if len(out) != 0 || skipped != 0 {

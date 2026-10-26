@@ -1,6 +1,6 @@
 # cloud0 — Data
 
-Store: one SQLite file at `CLOUD0_DB_PATH` (engine choice and portability rules: `spec/architecture.md → Stack`). All timestamps are RFC3339 UTC text; all dates are `YYYY-MM-DD`; money is `REAL` USD; booleans are `INTEGER` 0/1. Schema changes only via numbered goose migrations in `internal/store/migrations/`.
+Store: one SQLite file at `CLOUD0_DB_PATH` (engine choice and portability rules: `spec/architecture.md → Stack`). All timestamps are RFC3339 UTC text; all dates are `YYYY-MM-DD`; money is `REAL` in the export's currency (`CLOUD0_CURRENCY`, default INR); booleans are `INTEGER` 0/1. Schema changes only via numbered goose migrations in `internal/store/migrations/`.
 
 ## Entities
 
@@ -108,7 +108,7 @@ Key/value, seeded by migration 0001.
 | key | default value | Meaning |
 |---|---|---|
 | `anomaly_pct_threshold` | `20` | Flag when |Δ%| ≥ this **and** … |
-| `anomaly_abs_threshold_usd` | `50` | … |Δ$| ≥ this (week-over-week, latest snapshots) |
+| `anomaly_abs_threshold_usd` | `200` | … |Δ| ≥ this (currency units; the `_usd` key/JSON name is legacy and kept for stored data)  (week-over-week, latest snapshots) |
 
 Columns: `key TEXT PK`, `value TEXT NOT NULL`, `updated_at TEXT NOT NULL`. Later phases add keys (limits allowances, settle hours override) without schema change.
 
@@ -123,7 +123,7 @@ settings (singleton rows)
 ## Lifecycle
 
 - **Refresh (week):** `runs` row inserted (`running`) → BigQuery fetch → in one transaction: `run_sources` row; one `snapshots` row for the week (even when zero rows returned: `row_count 0`, totals 0) + its `snapshot_rows`; `runs` → `ok`. On source failure: `run_sources` row with error fields, no snapshot, `runs` → `failed`.
-- **Refresh (all):** same, one query over first→current; one `snapshots` row per ISO week in the range (weeks with no rows still get an empty snapshot so they read as "fetched, $0" rather than "not fetched"), all pointing to the same `run_source_id`.
+- **Refresh (all):** same, one query over first→current; one `snapshots` row per ISO week in the range (weeks with no rows still get an empty snapshot so they read as "fetched, 0" rather than "not fetched"), all pointing to the same `run_source_id`.
 - **Read:** table = latest snapshot per week (by `id`), rows filtered by scope (`project_id = ?` or none), aggregated by mapped column; previous-week comparison uses the latest snapshot of the previous week under the same scope.
 - **Staleness:** a snapshot whose `status_at_fetch` is earlier than the week's current `week_status` is displayed as stale ("Refresh for final"). Data is never silently recomputed.
 - **Annotations:** upsert on PUT; PUT with empty body deletes the row.

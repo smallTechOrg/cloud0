@@ -13,6 +13,7 @@ import {
   metricsCsvFilename,
   orderGroups,
   prettyAggregation,
+  resourceLabel,
 } from './metricsFormat';
 import type { MetricCell, MetricsTableResponse } from './types';
 
@@ -82,12 +83,36 @@ describe('metrics CSV', () => {
           group: 'vm',
           label: 'VM',
           columns: [{ key: 'cpu_pct', label: 'CPU %', unit: '%' }],
-          rows: [{ project: 'p', resource: 'a,"b"\nc', cells: { cpu_pct: cell({ gap: 'no data, sorry' }) } }],
+          rows: [{ project: 'p', resource: 'a,"b"\nc', is_total: false, cells: { cpu_pct: cell({ gap: 'no data, sorry' }) } }],
         },
       ],
     };
     const csv = buildMetricsCsv(data);
     expect(csv).toContain('p,"a,""b""\nc","no data, sorry"');
+  });
+
+  it('includes every group TOTAL row, dashes for percentages, and the active/idle columns', () => {
+    const csv = buildMetricsCsv(metricsTableFixture);
+    const lines = csv.split('\r\n');
+    expect(lines.filter((l) => l.startsWith(',Total,'))).toHaveLength(5); // vm, networking, cloudrun, logging, errors
+    expect(csv).toContain(',Total,—,—,—');
+    expect(csv).toContain('Active memory (GiB-s)');
+    expect(csv).toContain('Idle (min-instance) memory (GiB-s)');
+    expect(csv).toContain(',Total,9200.00,1200.00,8000.00,15300.00,4100.00,100.00,no data,not collected');
+  });
+
+  it('labels the total row "Total" and keeps the legacy project total label', () => {
+    expect(resourceLabel('', '', true)).toEqual({ name: 'Total', total: true });
+    expect(resourceLabel('p', '')).toEqual({ name: 'p (total)', total: true });
+    expect(resourceLabel('p', 'svc')).toEqual({ name: 'svc', total: false });
+  });
+
+  it('every fixture group with resource rows ends in exactly one total row', () => {
+    for (const g of metricsTableFixture.groups) {
+      if (g.rows.length === 0) continue;
+      expect(g.rows.filter((r) => r.is_total)).toHaveLength(1);
+      expect(g.rows[g.rows.length - 1]?.is_total).toBe(true);
+    }
   });
 
   it('builds a filename', () => {

@@ -11,10 +11,10 @@ test.describe.configure({ mode: 'serial' });
 test.setTimeout(240_000);
 
 function parseMoney(text: string | null): number {
-  // "1,191.69" or "(12.34)" → number
+  // "₹1,191.69" or "(₹12.34)" → number (currency symbol and grouping stripped)
   if (text === null) throw new Error('missing numeric text');
   const negative = text.includes('(');
-  const n = Number(text.replace(/[(),\s]/g, ''));
+  const n = Number(text.replace(/[^0-9.\-]/g, ''));
   if (!Number.isFinite(n)) throw new Error(`not a number: ${text}`);
   return negative ? -n : n;
 }
@@ -112,7 +112,7 @@ test('Phase 1 journey: refresh → table → inspector → drill-down → CSV �
 
   // Export CSV: the first line equals the visible header labels joined by commas.
   const [download] = await Promise.all([page.waitForEvent('download'), page.getByTestId('export-csv').click()]);
-  expect(download.suggestedFilename()).toMatch(/^cloud0-cost-all-\d{4}-W\d{2}-\d{4}-W\d{2}\.csv$/);
+  expect(download.suggestedFilename()).toMatch(/^cloud0-cost-all-\d{4}-W\d{2}-\d{4}-W\d{2}-[A-Z]{3}\.csv$/);
   const csvPath = await download.path();
   const csv = fs.readFileSync(csvPath, 'utf8');
   const [firstLine, ...dataLines] = csv.split('\r\n');
@@ -131,14 +131,14 @@ test('Phase 1 journey: refresh → table → inspector → drill-down → CSV �
   await expect(page.getByTestId('annotation-input')).toHaveValue(note, { timeout: 15_000 });
   await expect(page.getByTestId(`note-icon-${SMOKE_WEEK}`)).toBeVisible();
 
-  // Thresholds: 10 % / $5, Save, reload → still 10 / 5.
+  // Thresholds: 10 % / 5, Save, reload → still 10 / 5.
   await page.getByTestId('thresholds-edit').click();
   await page.getByTestId('thresholds-pct').fill('10');
   await page.getByTestId('thresholds-abs').fill('5');
   await page.getByTestId('thresholds-save').click();
-  await expect(page.getByTestId('thresholds-label')).toContainText('≥ 10 % and ≥ $5');
+  await expect(page.getByTestId('thresholds-label')).toContainText('≥ 10 % and ≥ ₹5.00');
   await page.reload();
-  await expect(page.getByTestId('thresholds-label')).toContainText('≥ 10 % and ≥ $5', { timeout: 15_000 });
+  await expect(page.getByTestId('thresholds-label')).toContainText('≥ 10 % and ≥ ₹5.00', { timeout: 15_000 });
   await page.getByTestId('thresholds-edit').click();
   await expect(page.getByTestId('thresholds-pct')).toHaveValue('10');
   await expect(page.getByTestId('thresholds-abs')).toHaveValue('5');

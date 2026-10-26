@@ -1,5 +1,5 @@
-// Display formatting (spec/ui.md): numbers right-aligned, 2 decimals, USD
-// without symbol, negatives in parentheses; percentages with one decimal and
+// Display formatting (spec/ui.md): numbers right-aligned, 2 decimals, money via
+// Intl.NumberFormat in the configured currency (CLOUD0_CURRENCY), negatives in parentheses; percentages with one decimal and
 // an explicit sign; byte sizes in decimal units like the BigQuery console.
 
 const MINUS = '−'; // U+2212, matches the spec's "−3.1 %"
@@ -10,19 +10,36 @@ function round2(n: number): number {
   return r === 0 ? 0 : r;
 }
 
-export function formatMoney(n: number, opts: { grouped?: boolean } = {}): string {
+/** Currency shown until `GET /config` has loaded; mirrors the server default (CLOUD0_CURRENCY). */
+export const DEFAULT_CURRENCY = 'INR';
+
+const moneyFormats = new Map<string, Intl.NumberFormat>();
+
+function moneyFormat(currency: string): Intl.NumberFormat {
+  let f = moneyFormats.get(currency);
+  if (!f) {
+    f = new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    moneyFormats.set(currency, f);
+  }
+  return f;
+}
+
+/** `₹1,191.69`; negatives in parentheses `(₹193.51)`; always 2 dp, en-IN grouping, symbol from `currency` (ISO 4217). */
+export function formatMoney(n: number, currency: string = DEFAULT_CURRENCY): string {
   const r = round2(n);
-  const abs = Math.abs(r);
-  const text = opts.grouped
-    ? abs.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    : abs.toFixed(2);
+  const text = moneyFormat(currency).format(Math.abs(r));
   return r < 0 ? `(${text})` : text;
 }
 
-/** Signed money for deltas: `+423.89` / `−50.00`. */
-export function formatSignedMoney(n: number): string {
+/** Signed money for deltas: `+₹423.89` / `−₹50.00`. */
+export function formatSignedMoney(n: number, currency: string = DEFAULT_CURRENCY): string {
   const r = round2(n);
-  const text = Math.abs(r).toFixed(2);
+  const text = moneyFormat(currency).format(Math.abs(r));
   if (r > 0) return `+${text}`;
   if (r < 0) return `${MINUS}${text}`;
   return text;
@@ -37,10 +54,10 @@ export function formatPct(n: number | null): string {
   return text;
 }
 
-/** `▲ +423.89 (+25.4 %)`; the pct part is omitted when null. */
-export function formatDelta(deltaAbs: number, deltaPct: number | null): string {
+/** `▲ +₹423.89 (+25.4 %)`; the pct part is omitted when null. */
+export function formatDelta(deltaAbs: number, deltaPct: number | null, currency: string = DEFAULT_CURRENCY): string {
   const arrow = deltaAbs < 0 ? '▼' : '▲';
-  const base = `${arrow} ${formatSignedMoney(deltaAbs)}`;
+  const base = `${arrow} ${formatSignedMoney(deltaAbs, currency)}`;
   return deltaPct === null ? base : `${base} (${formatPct(deltaPct)})`;
 }
 

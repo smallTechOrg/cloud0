@@ -1,9 +1,10 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { errorsTableFixture, metricsTableFixture } from '@/lib/fixtures2';
+import { ApiError } from '@/lib/api';
+import { errorSamplesFixture, errorsTableFixture, metricsTableFixture } from '@/lib/fixtures2';
 import type { ErrorsTableResponse, MetricsTableResponse } from '@/lib/types';
-import { ErrorsView } from './ErrorsPanel';
+import { ErrorsView, type SampleState } from './ErrorsPanel';
 import { MetricsView } from './MetricsPanel';
 
 const noop = () => {};
@@ -22,6 +23,22 @@ describe('MetricsView', () => {
     const positions = order.map((h) => html.indexOf(`>${h}</h3>`));
     expect(positions.every((p) => p >= 0)).toBe(true);
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+  });
+
+  it('renders a bold TOTAL row per group, dashes for percentages, and the active/idle columns', () => {
+    const html = metricsHtml();
+    expect(html.match(/data-testid="metrics-total-row"/g)?.length).toBe(5);
+    expect(html).toContain('>Total<');
+    expect(html).toContain('Active memory (GiB-s)');
+    expect(html).toContain('Idle (min-instance) memory (GiB-s)');
+    // VM total: percentage columns are dashes (a gap cell), not sums.
+    const vm = html.slice(html.indexOf('metrics-group-vm'), html.indexOf('metrics-group-cloudsql'));
+    const total = vm.slice(vm.indexOf('metrics-total-row'));
+    expect(total.match(/data-gap="true"/g)?.length).toBe(3);
+    expect(total).toContain('>—<');
+    // Selecting the total row's cell opens its provenance.
+    const sel = metricsHtml(metricsTableFixture, { group: 'cloudrun', project: '', resource: '', column: 'service_memory_gib_s', total: true });
+    expect(sel).toContain('Cloud Run · Total · Memory total (GiB-s)');
   });
 
   it('renders gaps as text with a tooltip, never 0', () => {
@@ -104,5 +121,63 @@ describe('ErrorsView', () => {
     const html = errorsHtml(errorsTableFixture, 2);
     expect(html).toContain('data-testid="metric-provenance"');
     expect(html).toContain('loadbalancing.googleapis.com');
+  });
+});
+
+describe('ErrorsView explainability', () => {
+  const view = (props: Partial<Parameters<typeof ErrorsView>[0]> = {}) =>
+    renderToStaticMarkup(createElement(ErrorsView, { data: errorsTableFixture, selected: null, onSelect: noop, ...props }));
+
+  it('always shows the "How these are counted" note with the scanner explanation', () => {
+    const html = view();
+    expect(html).toContain('data-testid="errors-how-counted"');
+    expect(html).toContain('How these are counted');
+    expect(html).toContain('run.googleapis.com/request_count');
+    expect(html).toContain('internet scanners');
+    expect(html).toContain('5xx are the real application-failure signal');
+  });
+
+  it('offers Details only on Cloud Run rows and hides the detail until expanded', () => {
+    const collapsed = view({ onToggleExpand: noop });
+    expect(collapsed.match(/data-testid="errors-expand"/g)?.length).toBe(1);
+    expect(collapsed).not.toContain('data-testid="errors-detail-row"');
+  });
+
+  it('expanded row shows error-code chips (5xx emphasised), the sample button and a safe Logs Explorer link', () => {
+    const html = view({ onToggleExpand: noop, expanded: new Set([0]), onSample: noop });
+    expect(html).toContain('404 ×11');
+    expect(html).toContain('401 ×1');
+    expect(html).toContain('data-kind="5xx"');
+    expect(html).not.toContain('200 ×');
+    expect(html.indexOf('502 ×1')).toBeLessThan(html.indexOf('404 ×11'));
+    expect(html).toContain('Explain &amp; sample');
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain('rel="noopener noreferrer"');
+    expect(html).toContain('console.cloud.google.com/logs/query');
+  });
+
+  it('says so when a stored batch predates exact codes', () => {
+    const old: ErrorsTableResponse = JSON.parse(JSON.stringify(errorsTableFixture));
+    const r = old.rows[0];
+    if (!r) throw new Error('fixture changed');
+    r.by_code = null;
+    expect(view({ data: old, expanded: new Set([0]) })).toContain('not stored for this batch');
+  });
+
+  it('renders loading, error, result, empty and out-of-retention sample states', () => {
+    const at = (sample: SampleState) => view({ expanded: new Set([0]), samples: { 0: sample }, onSample: noop });
+    expect(at({ status: 'loading' })).toContain('data-testid="errors-sample-loading"');
+    const err = at({ status: 'error', error: new ApiError(403, 'permission_denied', 'denied', 'grant roles/logging.viewer') });
+    expect(err).toContain('data-testid="errors-sample-error"');
+    expect(err).toContain('roles/logging.viewer');
+    const done = at({ status: 'done', data: errorSamplesFixture });
+    expect(done).toContain('/.git/config');
+    expect(done).toContain('looks like scanner traffic');
+    expect(done).toContain('90%');
+    expect(done).toContain('of the sampled 4xx responses look like scanner traffic');
+    expect(done).toContain('203.0.113.0/24');
+    expect(done).toContain('most recent entries');
+    expect(at({ status: 'done', data: { ...errorSamplesFixture, scanned: 0, top_paths: [], entries: [], scanner_share_4xx: null } })).toContain('data-testid="errors-sample-empty"');
+    expect(at({ status: 'done', data: { ...errorSamplesFixture, scanned: 0, out_of_retention: true, retention_note: '30 days' } })).toContain('Out of retention');
   });
 });

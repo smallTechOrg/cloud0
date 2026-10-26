@@ -79,6 +79,13 @@ const (
 	MStorageGBMonth = "storage_gb_month"
 	MSentGB         = "sent_gb"
 	MLoggingGB      = "logging_gb"
+
+	// Cloud Run active / idle split, derived from billing SKUs per service.
+	// MServiceMemGiBs / MServiceCPUSec stay the Monitoring TOTAL allocation.
+	MServiceMemActiveGiBs = "service_memory_active_gib_s"
+	MServiceMemIdleGiBs   = "service_memory_idle_gib_s"
+	MServiceCPUActiveSec  = "service_cpu_active_sec"
+	MServiceCPUIdleSec    = "service_cpu_idle_sec"
 )
 
 // MetricRow is one resource row of the Metrics block.
@@ -106,8 +113,9 @@ type ErrorRow struct {
 	C3xx        *int64
 	C4xx        *int64
 	C5xx        *int64
-	Groups      *int64 // Error Reporting: distinct groups
-	Occurrences *int64 // Error Reporting: total occurrences
+	Groups      *int64           // Error Reporting: distinct groups
+	Occurrences *int64           // Error Reporting: total occurrences
+	ByCode      map[string]int64 // Cloud Run: exact HTTP status code -> count (nil when not collected)
 	Gap         string
 	Hint        string
 	Provenance  Provenance

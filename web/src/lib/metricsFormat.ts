@@ -110,7 +110,9 @@ export function cellTitle(cell: MetricCell | undefined): string | undefined {
   return cell.unit || undefined;
 }
 
-export function resourceLabel(project: string, resource: string): { name: string; total: boolean } {
+/** Row heading: the server-assembled TOTAL row reads "Total"; a bare empty resource keeps the legacy "<project> (total)". */
+export function resourceLabel(project: string, resource: string, isTotal = false): { name: string; total: boolean } {
+  if (isTotal) return { name: 'Total', total: true };
   return resource === '' ? { name: `${project} (total)`, total: true } : { name: resource, total: false };
 }
 
@@ -138,7 +140,7 @@ export function buildMetricsCsv(data: MetricsTableResponse): string {
     lines.push(csvLine([groupHeading(g.group, g.label)]));
     lines.push(csvLine(['Project', 'Resource', ...g.columns.map((c) => columnTitle(c.label, c.unit))]));
     for (const r of g.rows) {
-      lines.push(csvLine([r.project, r.resource === '' ? '(total)' : r.resource, ...g.columns.map((c) => csvCell(r.cells[c.key]))]));
+      lines.push(csvLine([r.project, r.is_total ? 'Total' : r.resource === '' ? '(total)' : r.resource, ...g.columns.map((c) => csvCell(r.cells[c.key]))]));
     }
     sections.push(lines.join(CRLF));
   }

@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/smallTechOrg/cloud0/internal/config"
 	"github.com/smallTechOrg/cloud0/internal/isoweek"
 )
 
@@ -14,6 +15,7 @@ type ConfigResponse struct {
 	CurrentWeek string    `json:"current_week"`
 	DefaultWeek string    `json:"default_week"`
 	SettleHours int       `json:"settle_hours"`
+	Currency    string    `json:"currency"`
 	Now         time.Time `json:"now"`
 }
 
@@ -39,7 +41,16 @@ func (d Deps) handleConfig(w http.ResponseWriter, _ *http.Request) *APIError {
 		CurrentWeek: current.String(),
 		DefaultWeek: defaultWeek(d.Config.FirstWeek, current).String(),
 		SettleHours: d.Config.SettleHours,
+		Currency:    currencyOrDefault(d.Config.Currency),
 		Now:         now.Truncate(time.Second),
 	})
 	return nil
+}
+
+// currencyOrDefault keeps hand-built Configs (tests) reporting a valid code.
+func currencyOrDefault(c string) string {
+	if c == "" {
+		return config.DefaultCurrency
+	}
+	return c
 }

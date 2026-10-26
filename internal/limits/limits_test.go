@@ -3,6 +3,7 @@ package limits
 import (
 	"errors"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -235,6 +236,39 @@ func TestUsageFromRows_FallsBackToResourceRows(t *testing.T) {
 	v, ok := UsageFromRows(rows, a)
 	if !ok || !near(v, 125) {
 		t.Fatalf("got %v %v, want 125 true", v, ok)
+	}
+}
+
+func TestUsageFromRows_CloudRunMemoryAndCPUUseTotalColumnNotSplit(t *testing.T) {
+	// Monitoring group-total row (active + idle), billing split rows per service.
+	rows := []gcpsource.MetricRow{
+		{Group: gcpsource.GroupCloudRun, Project: "p1", Resource: "svc-a", Cells: map[string]gcpsource.Cell{
+			gcpsource.MServiceMemGiBs: cell(310), gcpsource.MServiceMemActiveGiBs: cell(10), gcpsource.MServiceMemIdleGiBs: cell(300),
+			gcpsource.MServiceCPUSec: cell(620), gcpsource.MServiceCPUActiveSec: cell(20), gcpsource.MServiceCPUIdleSec: cell(600)}},
+		{Group: gcpsource.GroupCloudRun, Project: "p1", Resource: "svc-b", Cells: map[string]gcpsource.Cell{
+			gcpsource.MServiceMemGiBs: cell(15), gcpsource.MServiceMemActiveGiBs: cell(15),
+			gcpsource.MServiceCPUSec: cell(30), gcpsource.MServiceCPUActiveSec: cell(30)}},
+		{Group: gcpsource.GroupCloudRun, Project: "p1", Resource: "", Cells: map[string]gcpsource.Cell{
+			gcpsource.MServiceMemGiBs: cell(325), gcpsource.MServiceCPUSec: cell(650), gcpsource.MEgressInterGB: cell(0.5)}},
+	}
+	for id, want := range map[string]float64{"cloudrun_memory_gib_s": 325, "cloudrun_cpu_vcpu_s": 650} {
+		a := mustDefault(t, id)
+		if a.MetricKey == gcpsource.MServiceMemActiveGiBs || a.MetricKey == gcpsource.MServiceMemIdleGiBs ||
+			a.MetricKey == gcpsource.MServiceCPUActiveSec || a.MetricKey == gcpsource.MServiceCPUIdleSec {
+			t.Fatalf("%s evaluates on a split column %s", id, a.MetricKey)
+		}
+		v, ok := UsageFromRows(rows, a)
+		if !ok || !near(v, want) {
+			t.Errorf("%s: got %v %v, want %v true (the total row, not active or idle alone)", id, v, ok, want)
+		}
+		if !strings.Contains(a.Reason, "active + idle min-instance") {
+			t.Errorf("%s reason = %q", id, a.Reason)
+		}
+	}
+	// Without a total row the per-service TOTAL cells sum (never the split).
+	v, ok := UsageFromRows(rows[:2], mustDefault(t, "cloudrun_memory_gib_s"))
+	if !ok || !near(v, 325) {
+		t.Errorf("resource fallback: got %v %v, want 325", v, ok)
 	}
 }
 

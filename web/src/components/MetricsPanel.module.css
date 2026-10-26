@@ -212,3 +212,14 @@
     background-position: -200% 0;
   }
 }
+
+.totalRow td,
+.totalRow th {
+  font-weight: 700;
+  background: #f3f5f9;
+  border-top: 2px solid var(--border);
+}
+
+.totalLabel {
+  font-weight: 700;
+}

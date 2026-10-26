@@ -10,6 +10,7 @@ import type {
   BreakdownResponse,
   CostTableResponse,
   ErrorEnvelope,
+  ErrorSamplesResponse,
   ErrorsTableResponse,
   Health,
   LimitsResponse,
@@ -176,6 +177,12 @@ export function getMetricsTable(params: { week?: WeekID; scope?: Scope } = {}): 
 
 export function getErrorsTable(params: { week?: WeekID; scope?: Scope } = {}): Promise<ErrorsTableResponse> {
   return request<ErrorsTableResponse>(`/errors/table${query(params)}`);
+}
+
+export function getErrorSamples(params: { week?: WeekID; service: string; project?: string; minStatus?: number; limit?: number }): Promise<ErrorSamplesResponse> {
+  return request<ErrorSamplesResponse>(
+    `/errors/samples${query({ week: params.week, service: params.service, project: params.project, min_status: params.minStatus, limit: params.limit })}`,
+  );
 }
 
 export function getLimits(week?: WeekID): Promise<LimitsResponse> {

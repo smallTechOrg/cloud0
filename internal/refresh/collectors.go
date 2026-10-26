@@ -121,7 +121,7 @@ func StandardCollectors(s Sources) []Collector {
 		mon("monitoring_logging", []Owned{columns(gcpsource.GroupLogging, gcpsource.MLoggingGB)}, monitoring.FetchLogging),
 		{Name: billingusage.Source, Owns: []Owned{
 			columns(gcpsource.GroupNetworking, gcpsource.MLBHours, gcpsource.MOutboundGB, gcpsource.MInboundGB),
-			columns(gcpsource.GroupCloudRun, gcpsource.MEgressInterGB),
+			columns(gcpsource.GroupCloudRun, gcpsource.MEgressInterGB, gcpsource.MServiceMemActiveGiBs, gcpsource.MServiceMemIdleGiBs, gcpsource.MServiceCPUActiveSec, gcpsource.MServiceCPUIdleSec),
 			columns(gcpsource.GroupGCS, gcpsource.MDownloadAPACGB),
 		}, Fetch: func(ctx context.Context, w gcpsource.Window) gcpsource.Result {
 			if s.BigQuery == nil {

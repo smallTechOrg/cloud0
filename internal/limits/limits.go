@@ -45,7 +45,7 @@ type Allowance struct {
 	MetricGroup string // gcpsource.Group*; empty for stubs without a metric
 	MetricKey   string // gcpsource.M*; empty for stubs without a metric
 	Stub        bool
-	Reason      string // why a stub row has no usage yet
+	Reason      string // why a stub row has no usage yet; for a live row, a one-line note shown with it
 }
 
 // SettingKey returns the settings key for an allowance id.
@@ -67,9 +67,11 @@ var defaults = []Allowance{
 	{ID: "cloudrun_requests", Service: "Cloud Run", Label: "Requests", Unit: "count", Monthly: 2000000,
 		MetricGroup: gcpsource.GroupCloudRun, MetricKey: gcpsource.MRequests},
 	{ID: "cloudrun_cpu_vcpu_s", Service: "Cloud Run", Label: "CPU", Unit: "vCPU-s", Monthly: 180000,
-		MetricGroup: gcpsource.GroupCloudRun, MetricKey: gcpsource.MServiceCPUSec},
+		MetricGroup: gcpsource.GroupCloudRun, MetricKey: gcpsource.MServiceCPUSec,
+		Reason: "free tier is consumed by active + idle min-instance CPU"},
 	{ID: "cloudrun_memory_gib_s", Service: "Cloud Run", Label: "Memory", Unit: "GiB-s", Monthly: 360000,
-		MetricGroup: gcpsource.GroupCloudRun, MetricKey: gcpsource.MServiceMemGiBs},
+		MetricGroup: gcpsource.GroupCloudRun, MetricKey: gcpsource.MServiceMemGiBs,
+		Reason: "free tier is consumed by active + idle min-instance memory"},
 	{ID: "cloudrun_egress_gb", Service: "Cloud Run", Label: "Egress", Unit: "GB", Monthly: 1,
 		MetricGroup: gcpsource.GroupCloudRun, MetricKey: gcpsource.MEgressInterGB},
 	{ID: "logging_gb", Service: "Cloud Logging", Label: "Log ingestion", Unit: "GB", Monthly: 50,
@@ -175,7 +177,10 @@ func NoData(a Allowance) Status {
 }
 
 // UsageFromRows sums a's metric over the group-total rows (Resource "") when
-// any of them carries a value, otherwise over the resource rows. Gap cells are
+// any of them carries a value, otherwise over the resource rows. The Cloud Run
+// memory and CPU allowances use the TOTAL columns (MServiceMemGiBs,
+// MServiceCPUSec: active + idle min-instance), never the billing active/idle
+// split columns. Gap cells are
 // skipped. It returns false when no value exists (or a is a stub).
 func UsageFromRows(rows []gcpsource.MetricRow, a Allowance) (float64, bool) {
 	if a.Stub || a.MetricGroup == "" || a.MetricKey == "" {

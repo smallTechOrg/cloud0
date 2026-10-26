@@ -59,14 +59,14 @@ func TestMigrate_AppliesInitAndStatusReportsIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pending != 2 {
-		t.Fatalf("pending before migrate = %d, want 2", pending)
+	if pending != 3 {
+		t.Fatalf("pending before migrate = %d, want 3", pending)
 	}
 	before, err := s.MigrationStatus(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(before) != 2 || before[0].Applied || before[0].Source != "0001_init.sql" || before[1].Source != "0002_phase2.sql" {
+	if len(before) != 3 || before[0].Applied || before[0].Source != "0001_init.sql" || before[1].Source != "0002_phase2.sql" || before[2].Source != "0003_error_codes.sql" {
 		t.Fatalf("status before migrate: %+v", before)
 	}
 
@@ -74,7 +74,7 @@ func TestMigrate_AppliesInitAndStatusReportsIt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
-	if len(applied) != 2 || applied[0].Source != "0001_init.sql" || applied[1].Source != "0002_phase2.sql" {
+	if len(applied) != 3 || applied[0].Source != "0001_init.sql" || applied[1].Source != "0002_phase2.sql" || applied[2].Source != "0003_error_codes.sql" {
 		t.Fatalf("applied = %+v", applied)
 	}
 
@@ -82,7 +82,7 @@ func TestMigrate_AppliesInitAndStatusReportsIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(after) != 2 || !after[1].Applied || after[0].AppliedAt.IsZero() || after[0].Version != 1 || after[1].Version != 2 {
+	if len(after) != 3 || !after[2].Applied || !after[1].Applied || after[0].AppliedAt.IsZero() || after[0].Version != 1 || after[1].Version != 2 {
 		t.Fatalf("status after migrate: %+v", after)
 	}
 	if time.Since(after[0].AppliedAt) > time.Minute {
@@ -163,7 +163,7 @@ func TestMigrate_SeedsAnomalyThresholds(t *testing.T) {
 	if _, err := s.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]string{"anomaly_pct_threshold": "20", "anomaly_abs_threshold_usd": "50"}
+	want := map[string]string{"anomaly_pct_threshold": "20", "anomaly_abs_threshold_usd": "200"}
 	for k, v := range want {
 		var value, updated string
 		if err := s.DB.QueryRow(`SELECT value, updated_at FROM settings WHERE "key" = ?`, k).Scan(&value, &updated); err != nil {

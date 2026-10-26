@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ApiError, toApiError } from '@/lib/api';
+import { useCurrency } from '@/lib/currency';
+import { formatMoney } from '@/lib/format';
 import { formatThreshold } from '@/lib/format';
 import type { Settings } from '@/lib/types';
 import styles from './ThresholdsEditor.module.css';
@@ -8,14 +10,15 @@ interface Props {
   settings: Settings | null;
   /** Error from GET /settings, shown inline instead of the thresholds. */
   loadError: ApiError | null;
-  onSave: (pct: number, absUsd: number) => Promise<void>;
+  onSave: (pct: number, absThreshold: number) => Promise<void>;
 }
 
 /**
- * "Anomaly thresholds: ≥ 20 % and ≥ $50 [Edit]" with a popover holding two
+ * "Anomaly thresholds: ≥ 20 % and ≥ ₹200.00 [Edit]" with a popover holding two
  * numeric inputs; Save → PUT /settings (the parent re-fetches the table).
  */
 export function ThresholdsEditor({ settings, loadError, onSave }: Props) {
+  const currency = useCurrency();
   const [open, setOpen] = useState(false);
   const [pct, setPct] = useState('');
   const [abs, setAbs] = useState('');
@@ -55,7 +58,7 @@ export function ThresholdsEditor({ settings, loadError, onSave }: Props) {
         Anomaly thresholds:{' '}
         {settings ? (
           <strong>
-            ≥ {formatThreshold(settings.anomaly_pct_threshold)} % and ≥ ${formatThreshold(settings.anomaly_abs_threshold_usd)}
+            ≥ {formatThreshold(settings.anomaly_pct_threshold)} % and ≥ {formatMoney(settings.anomaly_abs_threshold_usd, currency)}
           </strong>
         ) : loadError ? (
           <span className={styles.unavailable} title={`${loadError.code} — ${loadError.message}${loadError.hint ? ` ${loadError.hint}` : ''}`}>
@@ -90,7 +93,7 @@ export function ThresholdsEditor({ settings, loadError, onSave }: Props) {
             />
           </label>
           <label className={styles.field}>
-            <span>and ≥ (USD)</span>
+            <span>and ≥ ({currency})</span>
             <input
               className={styles.input}
               data-testid="thresholds-abs"

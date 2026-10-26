@@ -3,6 +3,7 @@
 // API exists. Not used by production code paths.
 
 import type {
+  ErrorSamplesResponse,
   ErrorsTableResponse,
   LimitsResponse,
   MetricCell,
@@ -40,6 +41,8 @@ const gap = (gapText: string, hint: string | null, unit: string, p: Provenance):
   limit_level: null,
 });
 
+const billProv = prov('bigquery_usage', 'SELECT …');
+
 const notCollected = (unit: string): MetricCell => gap('not collected', null, unit, prov('', ''));
 
 export const metricsTableFixture: MetricsTableResponse = {
@@ -63,10 +66,21 @@ export const metricsTableFixture: MetricsTableResponse = {
         {
           project: 'project-a',
           resource: 'vm-a',
+          is_total: false,
           cells: {
             cpu_pct: val(12.5, '%', vmProv),
             memory_pct: gap('no agent', 'install the Ops Agent', '%', prov('monitoring_vm', 'metric.type="agent.googleapis.com/memory/percent_used"')),
             disk_pct: gap('no agent', 'install the Ops Agent', '%', prov('monitoring_vm', 'metric.type="agent.googleapis.com/disk/percent_used"')),
+          },
+        },
+        {
+          project: '',
+          resource: '',
+          is_total: true,
+          cells: {
+            cpu_pct: gap('—', 'a percentage is not summed across resources', '%', prov('', '')),
+            memory_pct: gap('—', 'a percentage is not summed across resources', '%', prov('', '')),
+            disk_pct: gap('—', 'a percentage is not summed across resources', '%', prov('', '')),
           },
         },
       ],
@@ -92,7 +106,18 @@ export const metricsTableFixture: MetricsTableResponse = {
       rows: [
         {
           project: 'project-a',
+          resource: 'project-a',
+          is_total: false,
+          cells: {
+            lb_hours: val(168, 'hours', prov('bigquery_usage', 'SELECT …')),
+            outbound_gb: val(41.2, 'GB', prov('bigquery_usage', 'SELECT …'), 'near'),
+            inbound_gb: notCollected('GB'),
+          },
+        },
+        {
+          project: '',
           resource: '',
+          is_total: true,
           cells: {
             lb_hours: val(168, 'hours', prov('bigquery_usage', 'SELECT …')),
             outbound_gb: val(41.2, 'GB', prov('bigquery_usage', 'SELECT …'), 'near'),
@@ -105,19 +130,43 @@ export const metricsTableFixture: MetricsTableResponse = {
       group: 'cloudrun',
       label: 'Cloud Run',
       columns: [
-        { key: 'service_memory_gib_s', label: 'Memory (GiB-s)', unit: 'GiB-s' },
+        { key: 'service_memory_gib_s', label: 'Memory total (GiB-s)', unit: 'GiB-s' },
+        { key: 'service_memory_active_gib_s', label: 'Active memory (GiB-s)', unit: 'GiB-s' },
+        { key: 'service_memory_idle_gib_s', label: 'Idle (min-instance) memory (GiB-s)', unit: 'GiB-s' },
         { key: 'requests', label: 'Requests', unit: 'count' },
-        { key: 'service_cpu_sec', label: 'CPU (vCPU-s)', unit: 'vCPU-s' },
+        { key: 'service_cpu_sec', label: 'CPU total (vCPU-s)', unit: 'vCPU-s' },
+        { key: 'service_cpu_active_sec', label: 'Active CPU (vCPU-s)', unit: 'vCPU-s' },
+        { key: 'service_cpu_idle_sec', label: 'Idle (min-instance) CPU (vCPU-s)', unit: 'vCPU-s' },
         { key: 'egress_intercontinental_gb', label: 'Egress intercontinental GB', unit: 'GB' },
       ],
       rows: [
         {
           project: 'project-a',
           resource: 'svc-a',
+          is_total: false,
           cells: {
             service_memory_gib_s: val(9200, 'GiB-s', prov('monitoring_cloudrun', 'metric.type="run.googleapis.com/container/memory/allocation_time"')),
+            service_memory_active_gib_s: val(1200, 'GiB-s', billProv),
+            service_memory_idle_gib_s: val(8000, 'GiB-s', billProv),
             requests: val(15300, 'count', prov('monitoring_cloudrun', 'metric.type="run.googleapis.com/request_count"'), 'ok'),
             service_cpu_sec: val(4100, 'vCPU-s', prov('monitoring_cloudrun', 'metric.type="run.googleapis.com/container/cpu/allocation_time"')),
+            service_cpu_active_sec: val(100, 'vCPU-s', billProv),
+            service_cpu_idle_sec: gap('no data', 'no billing line items for these SKUs in the window', 'vCPU-s', billProv),
+            egress_intercontinental_gb: notCollected('GB'),
+          },
+        },
+        {
+          project: '',
+          resource: '',
+          is_total: true,
+          cells: {
+            service_memory_gib_s: val(9200, 'GiB-s', prov('monitoring_cloudrun', 'metric.type="run.googleapis.com/container/memory/allocation_time"')),
+            service_memory_active_gib_s: val(1200, 'GiB-s', billProv),
+            service_memory_idle_gib_s: val(8000, 'GiB-s', billProv),
+            requests: val(15300, 'count', prov('monitoring_cloudrun', 'metric.type="run.googleapis.com/request_count"'), 'ok'),
+            service_cpu_sec: val(4100, 'vCPU-s', prov('monitoring_cloudrun', 'metric.type="run.googleapis.com/container/cpu/allocation_time"')),
+            service_cpu_active_sec: val(100, 'vCPU-s', billProv),
+            service_cpu_idle_sec: gap('no data', 'no billing line items for these SKUs in the window', 'vCPU-s', billProv),
             egress_intercontinental_gb: notCollected('GB'),
           },
         },
@@ -142,7 +191,14 @@ export const metricsTableFixture: MetricsTableResponse = {
       rows: [
         {
           project: 'project-a',
+          resource: 'project-a',
+          is_total: false,
+          cells: { logging_gb: gap('source failed', 'grant the service account roles/monitoring.viewer', 'GB', prov('monitoring_logging', 'metric.type="logging.googleapis.com/billing/bytes_ingested"')) },
+        },
+        {
+          project: '',
           resource: '',
+          is_total: true,
           cells: { logging_gb: gap('source failed', 'grant the service account roles/monitoring.viewer', 'GB', prov('monitoring_logging', 'metric.type="logging.googleapis.com/billing/bytes_ingested"')) },
         },
       ],
@@ -158,6 +214,16 @@ export const metricsTableFixture: MetricsTableResponse = {
         {
           project: 'project-a',
           resource: 'svc-a',
+          is_total: false,
+          cells: {
+            c4xx: val(12, 'count', prov('errors_cloudrun', 'metric.type="run.googleapis.com/request_count"')),
+            c5xx: val(0, 'count', prov('errors_cloudrun', 'metric.type="run.googleapis.com/request_count"')),
+          },
+        },
+        {
+          project: '',
+          resource: '',
+          is_total: true,
           cells: {
             c4xx: val(12, 'count', prov('errors_cloudrun', 'metric.type="run.googleapis.com/request_count"')),
             c5xx: val(0, 'count', prov('errors_cloudrun', 'metric.type="run.googleapis.com/request_count"')),
@@ -176,8 +242,8 @@ export const errorsTableFixture: ErrorsTableResponse = {
   generated_at: '2026-10-26T09:00:00Z',
   snapshot: { id: 8, fetched_at: '2026-10-26T09:05:00Z', status_at_fetch: 'settling', run_id: 8, row_count: 4, stale: false },
   rows: [
-    { source: 'cloudrun', project: 'project-a', service: 'svc-a', c2xx: 1000, c3xx: 0, c4xx: 12, c5xx: 1, groups: null, occurrences: null, gap: null, hint: null, provenance: errProv },
-    { source: 'error_reporting', project: 'project-a', service: 'svc-a', c2xx: null, c3xx: null, c4xx: null, c5xx: null, groups: 3, occurrences: 40, gap: null, hint: null, provenance: prov('errors_error_reporting', 'groupStats serviceFilter.service=svc-a') },
+    { source: 'cloudrun', project: 'project-a', service: 'svc-a', c2xx: 1000, c3xx: 0, c4xx: 12, c5xx: 1, groups: null, occurrences: null, by_code: { '200': 1000, '404': 11, '401': 1, '502': 1 }, logs_url: 'https://console.cloud.google.com/logs/query;query=resource.type%3D%22cloud_run_revision%22;timeRange=2026-10-19T00:00:00.000Z%2F2026-10-26T00:00:00.000Z?project=project-a', gap: null, hint: null, provenance: errProv },
+    { source: 'error_reporting', project: 'project-a', service: 'svc-a', c2xx: null, c3xx: null, c4xx: null, c5xx: null, groups: 3, occurrences: 40, by_code: null, logs_url: null, gap: null, hint: null, provenance: prov('errors_error_reporting', 'groupStats serviceFilter.service=svc-a') },
     {
       source: 'load_balancer',
       project: 'project-a',
@@ -188,6 +254,8 @@ export const errorsTableFixture: ErrorsTableResponse = {
       c5xx: null,
       groups: null,
       occurrences: null,
+      by_code: null,
+      logs_url: null,
       gap: 'logging disabled',
       hint: 'HTTP(S) load-balancer backend logging is disabled on every backend service - enable logging on the backend service (sample rate >= 0.1) to see 4xx/5xx here',
       provenance: prov('errors_load_balancer', 'metric.type="loadbalancing.googleapis.com/https/request_count"'),
@@ -202,12 +270,40 @@ export const errorsTableFixture: ErrorsTableResponse = {
       c5xx: null,
       groups: null,
       occurrences: null,
+      by_code: null,
+      logs_url: null,
       gap: 'not collected',
       hint: 'nginx access logs are not collected - add the Ops Agent nginx receiver',
       provenance: prov('errors_nginx', 'log entries count'),
     },
   ],
   totals: { c2xx: 1000, c3xx: 0, c4xx: 12, c5xx: 1, groups: 3, occurrences: 40 },
+};
+
+export const errorSamplesFixture: ErrorSamplesResponse = {
+  week: '2026-W43',
+  project: 'project-a',
+  service: 'svc-a',
+  min_status: 400,
+  generated_at: '2026-10-26T09:00:00Z',
+  logs_url: 'https://console.cloud.google.com/logs/query;query=resource.type%3D%22cloud_run_revision%22?project=project-a',
+  scanned: 1000,
+  sampled: true,
+  note: 'Sampled from the most recent entries in the window (at most 1,000 scanned); counts here describe the sample, not the whole week.',
+  out_of_retention: false,
+  retention_note: '',
+  status_counts: { '404': 940, '401': 50, '502': 10 },
+  top_paths: [
+    { path: '/.git/config', status: 404, count: 300, scanner_like: true },
+    { path: '/.env', status: 404, count: 250, scanner_like: true },
+    { path: '/api/me', status: 401, count: 50, scanner_like: false },
+  ],
+  scanner_share_4xx: 0.9,
+  heuristic_note: 'scanner_like is a path-pattern heuristic (dotfiles, wp-*, *.php, /cgi-bin, ...), not proof of who sent the request.',
+  entries: [
+    { timestamp: '2026-10-18T23:59:01Z', status: 404, method: 'GET', path: '/.env', user_agent: 'curl/8.0', remote_ip: '203.0.113.0/24', latency_ms: 4.2, trace: 'projects/project-a/traces/abc', scanner_like: true },
+    { timestamp: '2026-10-18T23:58:40Z', status: 502, method: 'POST', path: '/api/me', user_agent: 'Mozilla/5.0', remote_ip: '198.51.100.0/24', latency_ms: 1200, trace: '', scanner_like: false },
+  ],
 };
 
 export const limitsFixture: LimitsResponse = {

@@ -109,11 +109,11 @@ describe('buildCsv', () => {
 
 describe('csvFilename', () => {
   it('encodes scope and range', () => {
-    expect(csvFilename('all', '2026-W18', '2026-W44')).toBe('cloud0-cost-all-2026-W18-2026-W44.csv');
-    expect(csvFilename('my-project', '2026-W18', '2026-W44')).toBe('cloud0-cost-my-project-2026-W18-2026-W44.csv');
+    expect(csvFilename('all', '2026-W18', '2026-W44', 'INR')).toBe('cloud0-cost-all-2026-W18-2026-W44-INR.csv');
+    expect(csvFilename('my-project', '2026-W18', '2026-W44', 'inr')).toBe('cloud0-cost-my-project-2026-W18-2026-W44-INR.csv');
   });
 
   it('sanitises characters that are unsafe in filenames', () => {
-    expect(csvFilename('a/b c', '2026-W18', '2026-W18')).toBe('cloud0-cost-a_b_c-2026-W18-2026-W18.csv');
+    expect(csvFilename('a/b c', '2026-W18', '2026-W18', 'USD')).toBe('cloud0-cost-a_b_c-2026-W18-2026-W18-USD.csv');
   });
 });

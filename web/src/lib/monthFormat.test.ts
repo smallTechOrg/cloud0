@@ -24,13 +24,13 @@ describe('month ids', () => {
 
 describe('formatSummaryLine', () => {
   it('formats net, target, projected', () => {
-    expect(formatSummaryLine(monthTableFixture.summary)).toBe('Current month net 812.40 · target 2,500.00 · projected 2,210.90');
+    expect(formatSummaryLine(monthTableFixture.summary)).toBe('Current month net ₹812.40 · target ₹2,500.00 · projected ₹2,210.90');
   });
   it('shows an em dash for an unset target', () => {
     expect(formatSummaryLine({ ...monthTableFixture.summary, target: null })).toContain('target — ·');
   });
   it('shows dashes for net/projected without data', () => {
-    expect(formatSummaryLine({ ...monthTableFixture.summary, has_data: false, net: 0, projected: 0 })).toBe('Current month net — · target 2,500.00 · projected —');
+    expect(formatSummaryLine({ ...monthTableFixture.summary, has_data: false, net: 0, projected: 0 })).toBe('Current month net — · target ₹2,500.00 · projected —');
   });
 });
 
@@ -47,7 +47,7 @@ describe('buildMonthCsv', () => {
     expect(csv).toBe('"Month, UTC","Total ""net"""\r\n2026-09,\r\n');
   });
   it('builds a safe filename', () => {
-    expect(monthCsvFilename('proj/a b', '2026-05', '2026-10')).toBe('cloud0-month-proj_a_b-2026-05-2026-10.csv');
+    expect(monthCsvFilename('proj/a b', '2026-05', '2026-10', 'INR')).toBe('cloud0-month-proj_a_b-2026-05-2026-10-INR.csv');
   });
 });
 

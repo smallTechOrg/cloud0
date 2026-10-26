@@ -55,7 +55,7 @@ func TestFetch_RealW42MatchesSheetAndScansUnder200MB(t *testing.T) {
 
 	totals := map[string]float64{}
 	for _, r := range res.Metrics {
-		if r.Resource != "" {
+		if r.Resource != "" && r.Group != gcpsource.GroupCloudRun {
 			t.Errorf("row %s/%s has resource %q, want group total", r.Group, r.Project, r.Resource)
 		}
 		for m, c := range r.Cells {
@@ -76,6 +76,9 @@ func TestFetch_RealW42MatchesSheetAndScansUnder200MB(t *testing.T) {
 		{gcpsource.MInboundGB, 0.10, 0.08, 0.12},
 		{gcpsource.MEgressInterGB, 0.86, 0.80, 0.92},
 		{gcpsource.MDownloadAPACGB, 0.09, 0.03, 0.10},
+		// Cloud Run memory split (sum over services): sheet's ~24.4k was the active part only.
+		{gcpsource.MServiceMemActiveGiBs, 25441, 24000, 27000},
+		{gcpsource.MServiceMemIdleGiBs, 300337, 285000, 316000},
 	}
 	for _, c := range checks {
 		got := totals[c.metric]

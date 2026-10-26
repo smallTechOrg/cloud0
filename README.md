@@ -57,6 +57,7 @@ cp .env.example .env
 | `CLOUD0_SETTLE_HOURS` | no | `48` | Hours after a week ends before it is labelled `final`. |
 | `CLOUD0_PARTITION_MARGIN_DAYS` | no | `1` | Days added on each side of the `_PARTITIONTIME` filter. |
 | `CLOUD0_LOG_LEVEL` | no | `info` | `debug` / `info` / `warn` / `error`. |
+| `CLOUD0_CURRENCY` | no | `INR` | 3-letter ISO 4217 code of the billing export's `currency` column. Display only: used to format every money value; no conversion is applied. |
 | `CLOUD0_SMOKE_WEEK` | tests only | `2026-W42` | A known complete, non-empty week for smoke/e2e tests. |
 | `CLOUD0_E2E_PORT` | tests only | `8097` | Port Playwright starts the binary on. |
 
@@ -123,7 +124,7 @@ make e2e         # cd web && pnpm exec playwright test   (starts ./bin/cloud0 on
 
 - `make test` includes `internal/testenv`'s `TestCredentialsAlive`, which runs a real `SELECT 1` on BigQuery with the key from `.env`; it skips (and the gate is **not** green) only when the BigQuery variables are absent.
 - `tests/scaffold` builds the binary, migrates a temp DB, starts `serve` on an OS-assigned port and checks health, the served UI, its CSS/JS and the request log. It needs `make web-build` to have run first.
-- `tests/smoke` (Phase 1 live smoke) runs `make build`, migrates a temp DB, starts `serve` on an OS-assigned port with the real `.env` BigQuery settings, waits for `health.bigquery.status == "ok"`, refreshes `CLOUD0_SMOKE_WEEK` (default `2026-W42`), asserts Compute Engine net > 0 and Total GCP = Σ services ± $0.005, fetches `/` and every linked CSS/JS, checks the `request` / `refresh.done` log lines, then stops the server and deletes the temp DB. It runs for real against BigQuery (one query, well under 200 MB) and takes a few minutes because it rebuilds the UI. Run it alone with `GO111MODULE=on GOTOOLCHAIN=local /opt/homebrew/bin/go test ./tests/smoke/ -count=1 -v -timeout 15m`.
+- `tests/smoke` (Phase 1 live smoke) runs `make build`, migrates a temp DB, starts `serve` on an OS-assigned port with the real `.env` BigQuery settings, waits for `health.bigquery.status == "ok"`, refreshes `CLOUD0_SMOKE_WEEK` (default `2026-W42`), asserts Compute Engine net > 0 and Total GCP = Σ services ± 0.005, fetches `/` and every linked CSS/JS, checks the `request` / `refresh.done` log lines, then stops the server and deletes the temp DB. It runs for real against BigQuery (one query, well under 200 MB) and takes a few minutes because it rebuilds the UI. Run it alone with `GO111MODULE=on GOTOOLCHAIN=local /opt/homebrew/bin/go test ./tests/smoke/ -count=1 -v -timeout 15m`.
 - `tests/smoke/live_phase2_test.go` starts its own server, runs `refresh` mode `all` and then the smoke week against real GCP, and asserts the Phase 2 gate checks (section 8). Run it alone with `... go test ./tests/smoke/ -run Phase2 -count=1 -v`.
 - Every test uses its own temp SQLite file; nothing touches `./data/cloud0.db`.
 
@@ -149,7 +150,7 @@ Open **http://127.0.0.1:8087/** (needs the BigQuery variables from section 1 in 
 3. **Reconcile.** Compare Total GCP of a known week with the spreadsheet; expect roughly equal (small differences come from the sheet's manual day boundaries).
 4. **Drill down.** Click a Compute Engine cell: the inspector shows the exact SQL, parameters, BigQuery job id, bytes, fetch time and status. The SKU list appears; click a SKU for resource rows with gross / credits / net. Networking shows gross > net (discount credits); VM manager shows 0 net with gross offset by credits.
 5. **Export CSV.** Click **Export CSV** and open the file in a spreadsheet: same header order, 2-dp values.
-6. **Anomaly thresholds.** Change them to 5% / $5: more rows are flagged. Set them back. They persist across reload.
+6. **Anomaly thresholds.** Change them to 5% / 5: more rows are flagged. Set them back. They persist across reload.
 7. **Notes.** Type a note on the selected week, Save, reload: it persists (also across a server restart).
 8. **Run log.** Open the run log drawer: runs with duration, rows and bytes billed.
 9. **Scope.** Switch to one project: numbers change and provenance shows the scope-filter line.

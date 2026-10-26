@@ -9,7 +9,7 @@ Renders one row per ISO week (first→current) of net-of-credits cost per servic
 | Latest snapshot per week + rows | store | `snapshots`, `snapshot_rows` | yes (rows may be absent → "not fetched") |
 | Scope | `Scope` | picker | default `all` |
 | Range | `from`, `to` WeekIDs | defaults `first_week`, `current_week` | no |
-| Thresholds | pct, abs USD | `settings` | yes (seeded) |
+| Thresholds | pct, abs (currency units) | `settings` | yes (seeded) |
 | Annotations | text per week | `annotations` | no |
 | Now | timestamp | server clock | yes |
 

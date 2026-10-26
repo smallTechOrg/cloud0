@@ -1,3 +1,4 @@
+import { useCurrency } from '@/lib/currency';
 import { useEffect, useState } from 'react';
 import { ApiError, getSnapshot, toApiError } from '@/lib/api';
 import { formatMoney, formatPct } from '@/lib/format';
@@ -24,6 +25,7 @@ interface Props {
 
 /** Right panel: header + provenance (GET /snapshots/{id}) + drill-down (breakdown). */
 export function CellInspector({ target, scope, columns, onClose }: Props) {
+  const currency = useCurrency();
   const { row, column } = target;
   const snapshotId = row.snapshot?.id ?? null;
   const [snapshot, setSnapshot] = useState<SnapshotProvenance | null>(null);
@@ -55,7 +57,7 @@ export function CellInspector({ target, scope, columns, onClose }: Props) {
   }, [onClose]);
 
   const cell = column.kind === 'service' || column.kind === 'total' ? row.cells?.[column.key] : undefined;
-  const valueText = column.kind === 'pct_change' ? formatPct(row.pct_change) : cell ? formatMoney(cell.net, { grouped: true }) : '—';
+  const valueText = column.kind === 'pct_change' ? formatPct(row.pct_change) : cell ? formatMoney(cell.net, currency) : '—';
 
   const previous: PreviousWeekInfo | null =
     column.kind === 'pct_change' && target.prevRow?.snapshot && target.prevRow.cells?.total

@@ -9,7 +9,7 @@ Base URL: `http://127.0.0.1:${CLOUD0_PORT}` (default `http://127.0.0.1:8087`). P
 | `WeekID` | string `YYYY-Www` | e.g. `2026-W43`; `ww` two digits 01–53; validated against the ISO calendar (2026 has W53, 2027 does not). |
 | `Scope` | `"all"` or a project ID string | Project IDs come from `GET /config`. Unknown → `400 invalid_scope`. |
 | `WeekStatus` | `"partial" \| "settling" \| "final"` | `spec/data.md → Week`. |
-| `Money` | JSON number | USD, unrounded `float64`; credits are ≤ 0. UI rounds to 2 dp. |
+| `Money` | JSON number | Unrounded `float64` in `config.currency` (default INR); credits are ≤ 0. UI rounds to 2 dp. |
 | `Timestamp` | string RFC3339 UTC | `2026-10-26T09:15:00Z` |
 | `Date` | string `YYYY-MM-DD` | |
 
@@ -51,9 +51,9 @@ A **source failure during refresh is not an HTTP error**: `POST /refresh` return
 200:
 ```json
 {"projects": ["project-a", "project-b"], "first_week": "2026-W18", "current_week": "2026-W44",
- "default_week": "2026-W43", "settle_hours": 48, "now": "2026-10-26T09:00:00Z"}
+ "default_week": "2026-W43", "settle_hours": 48, "currency": "INR", "now": "2026-10-26T09:00:00Z"}
 ```
-`projects` is `CLOUD0_GCP_PROJECTS` in order. `default_week` = last complete week (`current_week − 1`, never before `first_week`).
+`projects` is `CLOUD0_GCP_PROJECTS` in order. `currency` is `CLOUD0_CURRENCY` (ISO 4217, default `INR`): the unit of every `Money` value. `default_week` = last complete week (`current_week − 1`, never before `first_week`).
 
 ### `GET /api/v1/cost/table`
 Query: `scope` (default `all`), `from` (default `first_week`), `to` (default `current_week`).
@@ -243,13 +243,16 @@ Query: `week` (default `default_week`), `scope` (default `all`). 200:
   "groups": [
     {"group": "vm", "label": "VM",
      "columns": [{"key": "cpu_pct", "label": "CPU %", "unit": "%"}, {"key": "memory_pct", "label": "Memory %", "unit": "%"}, {"key": "disk_pct", "label": "Disk %", "unit": "%"}],
-     "rows": [{"project": "project-a", "resource": "vm-a", "cells": {"cpu_pct": {…MetricCell}, "memory_pct": {…}, "disk_pct": {…}}}]}
+     "rows": [{"project": "project-a", "resource": "vm-a", "is_total": false, "cells": {"cpu_pct": {…MetricCell}, "memory_pct": {…}, "disk_pct": {…}}},
+              {"project": "", "resource": "", "is_total": true, "cells": {"cpu_pct": {"value": null, "gap": "—", …}, …}}]}
   ]
 }
 ```
-- `groups` always has all seven groups, in this order: `vm`, `cloudsql`, `networking`, `cloudrun`, `gcs`, `logging`, `errors` (labels/columns from `gcpsource.MetricGroups()`, the single source of truth; columns in sheet order: vm/cloudsql `cpu_pct, memory_pct, disk_pct`; networking `lb_hours, outbound_gb, inbound_gb`; cloudrun `service_memory_gib_s, requests, service_cpu_sec, egress_intercontinental_gb`; gcs `class_a_ops, class_b_ops, download_apac_gb, sent_gb, storage_gb_month`; logging `logging_gb`; errors `c4xx, c5xx`).
+- `groups` always has all seven groups, in this order: `vm`, `cloudsql`, `networking`, `cloudrun`, `gcs`, `logging`, `errors` (labels/columns from `gcpsource.MetricGroups()`, the single source of truth; columns in sheet order: vm/cloudsql `cpu_pct, memory_pct, disk_pct`; networking `lb_hours, outbound_gb, inbound_gb`; cloudrun `service_memory_gib_s` (Memory total), `service_memory_active_gib_s` (Active memory), `service_memory_idle_gib_s` (Idle min-instance memory), `requests`, `service_cpu_sec` (CPU total), `service_cpu_active_sec`, `service_cpu_idle_sec`, `egress_intercontinental_gb`; gcs `class_a_ops, class_b_ops, download_apac_gb, sent_gb, storage_gb_month`; logging `logging_gb`; errors `c4xx, c5xx`).
 - `snapshot` is `null` and every group has `rows: []` when the week has no metric snapshot (UI renders "not fetched yet").
-- `rows` = the stored `MetricRow`s of that group whose `project` is in scope (`scope` = a project id filters on `project`; no cross-project summing), in stored order. `resource: ""` is a per-project group-total row. `cells` has one entry per column of the group; a column absent from the stored row is filled with `{"value": null, "gap": "not collected", …}` with `provenance.source: ""`.
+- `rows` = the resource rows of that group whose `project` is in scope (`scope` = a project id filters on `project`), in stored order, followed by exactly one **TOTAL row** (`is_total: true`, `project: ""`, `resource: ""`) when the group has any row. Stored rows are merged at read time by `(project, resource)` — for Cloud Run the Monitoring row (`service_memory_gib_s`, `requests`, `service_cpu_sec`) and the billing row (`service_memory_active_gib_s`, `service_memory_idle_gib_s`, `service_cpu_active_sec`, `service_cpu_idle_sec`, `egress_intercontinental_gb`) of the same service name share one row; a service present in only one source keeps its cells and the other source's cells are gaps (`no data`). A stored project-level row (`Resource ""`: billing egress, Networking) is not a resource row: when the group has resource rows it only feeds the TOTAL; when it has none (Networking) it is shown with `resource` = the project id. `cells` has one entry per column of the group; a column absent from the stored row is filled with `{"value": null, "gap": "not collected", …}` with `provenance.source: ""`.
+- **TOTAL row**: per column, the sum over the (in-scope, all-project) resource rows that have a value (hint `sum of N rows`, provenance of the first contributing cell); when no resource row has a value the project-level aggregates supply it, else the first gap is carried (`no data` if none). Percentage columns (`unit: "%"`) are never summed: they are the gap `"—"` (hint "a percentage is not summed across resources"). The TOTAL row carries the `limit_level` of the column's allowance, since limits evaluate on totals. Groups with no rows have no TOTAL row.
+- **Cloud Run memory/CPU**: `service_memory_gib_s` / `service_cpu_sec` are the Cloud Monitoring TOTAL allocation (active + idle min-instance); `*_active_*` comes from billing SKUs `Services Memory|CPU (Request-based billing)`, `*_idle_*` from `Services Min Instance Memory|CPU (Request-based billing)` (per service, `resource.name`). Active + idle reconciles with the Monitoring total (W42: 25,441 + 300,337 ≈ 322,486 GiB-s within 5%). The free-tier allowances (`cloudrun_memory_gib_s`, `cloudrun_cpu_vcpu_s`) are evaluated on the TOTAL columns and their Limits rows carry the note "free tier is consumed by active + idle min-instance memory|CPU" in `reason`.
 - The `errors` group is derived from the latest error batch of the week (see `GET /errors/table`): one row per `source: "cloudrun"` error row (`resource` = service), cells `c4xx`/`c5xx` carrying that row's counts (or its gap), same provenance. No error batch → `rows: []`.
 
 ### `GET /api/v1/errors/table`
@@ -259,7 +262,7 @@ Query: `week` (default `default_week`), `scope`. 200:
   "week": "2026-W43", "scope": "all", "generated_at": "2026-10-26T09:00:00Z",
   "snapshot": {"id": 8, "fetched_at": "2026-10-26T09:05:00Z", "status_at_fetch": "settling", "run_id": 8, "row_count": 3, "stale": false},
   "rows": [
-    {"source": "cloudrun", "project": "project-a", "service": "svc-a", "c2xx": 1000, "c3xx": 0, "c4xx": 12, "c5xx": 1, "groups": null, "occurrences": null, "gap": null, "hint": null, "provenance": {…}},
+    {"source": "cloudrun", "project": "project-a", "service": "svc-a", "c2xx": 1000, "c3xx": 0, "c4xx": 12, "c5xx": 1, "groups": null, "occurrences": null, "by_code": {"200": 1000, "404": 11, "401": 1, "502": 1}, "logs_url": "https://console.cloud.google.com/logs/query;query=…;timeRange=…?project=project-a", "gap": null, "hint": null, "provenance": {…}},
     {"source": "error_reporting", "project": "project-a", "service": "svc-a", "c2xx": null, "c3xx": null, "c4xx": null, "c5xx": null, "groups": 3, "occurrences": 40, "gap": null, "hint": null, "provenance": {…}},
     {"source": "load_balancer", "project": "project-a", "service": "", "c2xx": null, "c3xx": null, "c4xx": null, "c5xx": null, "groups": null, "occurrences": null, "gap": "logging disabled", "hint": "enable logging on the backend service (sample rate >= 0.1)", "provenance": {…}}
   ],
@@ -268,6 +271,30 @@ Query: `week` (default `default_week`), `scope`. 200:
 ```
 - `source` ∈ `cloudrun | error_reporting | load_balancer | nginx` (`gcpsource.ErrSrc*`). Counts are `null` exactly when `gap` is non-null (or the source does not produce that count: `groups`/`occurrences` only on `error_reporting`, `c*xx` only on the others); an explicit `0` is a real zero.
 - `rows` are the latest error batch (highest `run_id`) of the week, filtered to `scope` by `project`, stored order. `snapshot: null` and `rows: []` when never fetched. `totals` sums non-null values over the returned rows (`null` per field when no row has it; all `null` when `rows` is empty).
+
+- `by_code` (cloudrun rows only, else `null`): exact HTTP status code -> request count for the week, from Cloud Monitoring `run.googleapis.com/request_count` grouped by `metric.labels.response_code` (as well as `response_code_class`); stored in `error_rows.by_code_json` (migration `0003_error_codes.sql`, NULL for batches fetched before it). The per-project totals row (`service: ""`) sums its services. Codes sum to the class counts.
+- `logs_url` (cloudrun rows with a service and no gap, else `null`): a Logs Explorer deep link built at request time: `https://console.cloud.google.com/logs/query;query=<url-encoded filter>;timeRange=<week start>%2F<week end>?project=<project>`, filter `resource.type="cloud_run_revision" AND resource.labels.service_name="<svc>" AND httpRequest.status>=400`.
+- How Cloud Run counts arise: `c4xx`/`c5xx` count EVERY 4xx/5xx HTTP response the service sent, including internet scanners probing `/.git/config`, `/.env`, `/wp-*`; 5xx are the application-failure signal. `error_reporting` rows count grouped application exceptions (separate source).
+
+### `GET /api/v1/errors/samples`
+Query: `week` (default `default_week`), `service` (required, Cloud Run service), `project` (required when several projects are configured; must be a configured project), `min_status` (100..599, default 400), `limit` (1..200, default 50, max entries returned). On-demand read of Cloud Logging (`logadmin`, newest first) for the week window; **sampled from the most recent entries in the window, at most 1,000 scanned** — counts describe the sample, not the whole week. 200:
+```json
+{
+  "week": "2026-W42", "project": "project-a", "service": "svc-a", "min_status": 400, "generated_at": "…",
+  "logs_url": "https://console.cloud.google.com/logs/query;query=…",
+  "scanned": 1000, "sampled": true, "note": "Sampled from the most recent entries in the window …",
+  "out_of_retention": false, "retention_note": "",
+  "status_counts": {"404": 960, "401": 30, "502": 10},
+  "top_paths": [{"path": "/.git/config", "status": 404, "count": 120, "scanner_like": true}],
+  "scanner_share_4xx": 0.93,
+  "heuristic_note": "scanner_like is a path-pattern heuristic …",
+  "entries": [{"timestamp": "…", "status": 404, "method": "GET", "path": "/.env", "user_agent": "…", "remote_ip": "203.0.113.0/24", "latency_ms": 4.2, "trace": "projects/…/traces/…", "scanner_like": true}]
+}
+```
+- `top_paths`: top 10 (path, status) groups by count, query string stripped. `entries`: up to `limit`, newest first; `remote_ip` is truncated to the network (IPv4 /24, IPv6 /48), never a full address.
+- `scanner_like` is a **heuristic** (`errorsrc.LooksLikeScanner`; lists `ScannerPrefixes`/`ScannerSuffixes`: dotfiles other than `.well-known`, `/wp-*`, `*.php`, `*.bak`, `/cgi-bin`, `/admin`, `/phpmyadmin` …). `scanner_share_4xx` = scanner-like fraction of scanned 4xx entries (`null` when none).
+- Cloud Logging's `_Default` bucket keeps logs 30 days: a week that ended more than 30 days ago answers 200 with `out_of_retention: true`, `retention_note` set and no query. An in-retention week with no matching entries has `scanned: 0`.
+- Errors: `400 invalid_request` (missing `service`/`project`, bad `min_status`/`limit`), `400 invalid_scope` (unknown project), `400 invalid_week`, `400 week_out_of_range`; Logging failures keep the envelope with a hint: `403 permission_denied` (hint names `roles/logging.viewer`), `503 api_disabled`, `429 quota`, `502 samples_failed`; `503 samples_unavailable` when no Logging client could be built.
 
 ### `GET /api/v1/limits`
 Query: `week` (default `default_week`). 200:

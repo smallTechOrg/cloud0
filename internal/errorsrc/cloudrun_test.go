@@ -235,7 +235,7 @@ func TestFetchCloudRun_SendsWindowAlignedGroupedQuery(t *testing.T) {
 		t.Fatalf("aligner = %v", agg.GetPerSeriesAligner())
 	case agg.GetCrossSeriesReducer() != monitoringpb.Aggregation_REDUCE_SUM:
 		t.Fatalf("reducer = %v", agg.GetCrossSeriesReducer())
-	case strings.Join(agg.GetGroupByFields(), ",") != "resource.labels.service_name,metric.labels.response_code_class":
+	case strings.Join(agg.GetGroupByFields(), ",") != "resource.labels.service_name,metric.labels.response_code_class,metric.labels.response_code":
 		t.Fatalf("group by = %v", agg.GetGroupByFields())
 	case agg.GetAlignmentPeriod().AsDuration() != 7*24*time.Hour:
 		t.Fatalf("alignment = %v", agg.GetAlignmentPeriod().AsDuration())
