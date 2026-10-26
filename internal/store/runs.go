@@ -17,6 +17,8 @@ type RunTrigger string
 const (
 	TriggerRefreshWeek RunTrigger = "refresh_week"
 	TriggerRefreshAll  RunTrigger = "refresh_all"
+	// TriggerRefreshMonth is a Phase 2 month refresh (migration 0002 relaxes the CHECK).
+	TriggerRefreshMonth RunTrigger = "refresh_month"
 )
 
 // RunStatus is the run lifecycle state.
@@ -111,7 +113,7 @@ type NewRun struct {
 // CreateRun inserts a `running` run covering the inclusive week range.
 func CreateRun(ctx context.Context, q Querier, nr NewRun) (Run, error) {
 	switch {
-	case nr.Trigger != TriggerRefreshWeek && nr.Trigger != TriggerRefreshAll:
+	case nr.Trigger != TriggerRefreshWeek && nr.Trigger != TriggerRefreshAll && nr.Trigger != TriggerRefreshMonth:
 		return Run{}, fmt.Errorf("%w: trigger %q", ErrInvalidInput, nr.Trigger)
 	case !nr.From.Valid() || !nr.To.Valid() || isoweek.Compare(nr.From, nr.To) > 0:
 		return Run{}, fmt.Errorf("%w: week range %v..%v", ErrInvalidInput, nr.From, nr.To)

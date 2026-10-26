@@ -144,9 +144,9 @@ test('Phase 1 journey: refresh → table → inspector → drill-down → CSV �
   await expect(page.getByTestId('thresholds-abs')).toHaveValue('5');
   await page.getByTestId('thresholds-cancel').click();
 
-  // Metrics tab is a labelled stub.
-  await page.getByTestId('nav-tab-metrics').click();
-  await expect(page.getByTestId('stub-panel')).toContainText('Metrics — Coming in Phase 2');
+  // Attribution is still a labelled stub (Metrics became real in Phase 2).
+  await page.getByTestId('nav-tab-attribution').click();
+  await expect(page.getByTestId('stub-panel')).toContainText('Attribution — Coming in Phase 3');
   await expect(page.getByTestId('stub-panel')).toContainText('Not functional yet');
   await page.getByTestId('nav-tab-cost').click();
   await expect(page.getByTestId('cost-table')).toBeVisible();
@@ -170,7 +170,7 @@ test('unknown API paths return the not_found envelope and a deep-linked stub tab
   expect(body.error.code).toBe('not_found');
 
   // The page itself always renders the shell even when a data call fails.
-  await page.goto('/#limits');
-  await expect(page.getByTestId('stub-panel')).toContainText('Limits — Coming in Phase 2');
+  await page.goto('/#attribution');
+  await expect(page.getByTestId('stub-panel')).toContainText('Attribution — Coming in Phase 3');
   await expect(page.getByTestId('api-status')).toContainText('connected', { timeout: 15_000 });
 });

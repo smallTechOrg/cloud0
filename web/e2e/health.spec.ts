@@ -44,15 +44,16 @@ test('dashboard shell loads, connects to the API and renders the Cost tab with n
   expect(headers.slice(-2)).toEqual(['AI Cost (Groq)', 'claude (usage)']);
   await expect(page.getByTestId('cost-table').locator('thead')).toContainText('(stub)');
 
-  // Every non-Cost tab is a labelled stub panel.
+  // Phase 2 tabs are real (never a stub panel); every other non-Cost tab is a labelled stub.
+  for (const id of ['metrics', 'errors', 'month', 'limits']) {
+    await page.getByTestId(`nav-tab-${id}`).click();
+    await expect(page.getByTestId('active-panel')).toHaveAttribute('data-tab', id);
+    await expect(page.getByTestId('stub-panel')).toHaveCount(0);
+  }
   const stubs: Array<[string, string]> = [
-    ['metrics', 'Metrics — Coming in Phase 2'],
-    ['errors', 'Errors — Coming in Phase 2'],
     ['attribution', 'Attribution — Coming in Phase 3'],
-    ['month', 'Month — Coming in Phase 2'],
     ['budgets', 'Budgets & Alerts — Coming in Phase 4'],
     ['vendors', 'Vendors — Coming in Phase 4'],
-    ['limits', 'Limits — Coming in Phase 2'],
     ['rightsizing', 'Rightsizing — Coming in Phase 3'],
     ['targets', 'Targets — Coming in Phase 3'],
   ];

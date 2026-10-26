@@ -28,3 +28,23 @@ func TestClassify(t *testing.T) {
 		}
 	}
 }
+
+func TestMetricGroups_SheetOrderAndUniqueKeys(t *testing.T) {
+	want := []string{GroupVM, GroupCloudSQL, GroupNetworking, GroupCloudRun, GroupGCS, GroupLogging, GroupErrors}
+	gs := MetricGroups()
+	if len(gs) != len(want) {
+		t.Fatalf("groups = %d", len(gs))
+	}
+	for i, g := range gs {
+		if g.Group != want[i] || len(g.Columns) == 0 {
+			t.Errorf("group %d = %+v, want %s", i, g, want[i])
+		}
+		seen := map[string]bool{}
+		for _, c := range g.Columns {
+			if seen[c.Key] || c.Label == "" || c.Unit == "" {
+				t.Errorf("group %s bad column %+v", g.Group, c)
+			}
+			seen[c.Key] = true
+		}
+	}
+}

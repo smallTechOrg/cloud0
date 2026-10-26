@@ -34,6 +34,6 @@ Fills the sheet's always-empty "Errors (4xx, 5xx)" row with real weekly counts p
 - Gaps are stored as rows with `gap_reason` and `fix_hint`, so the history shows when they were closed.
 
 ## Success Criteria
-- [ ] Real APIs: for `CLOUD0_SMOKE_WEEK` at least one Cloud Run service has `4xx > 0` and numeric `5xx`; Error Reporting returns ≥ 0 groups without error; the LB row is a gap with the hint text containing "backend service".
+- [ ] Real APIs: for `CLOUD0_SMOKE_WEEK` at least one Cloud Run service has `4xx > 0` and numeric `5xx`; Error Reporting returns ≥ 0 groups without error; the load-balancer metric has real data even with backend logging off, so the LB row shows counts when present and the gap card (hint containing "backend service") only when absent.
 - [ ] Sum over code classes equals `request_count` without the class grouping (± 0 — same source).
-- [ ] e2e: Errors tab shows the per-service table and two gap cards with fix hints.
+- [ ] e2e: Errors tab shows the per-service table, load-balancer counts (or its gap card with fix hint when the metric is absent) and the nginx `not collected` gap card with its fix hint.

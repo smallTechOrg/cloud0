@@ -116,7 +116,7 @@ export interface CostTableResponse {
 
 // ---- POST /refresh ----------------------------------------------------------
 
-export type RefreshRequest = { mode: 'week'; week: WeekID } | { mode: 'all' };
+export type RefreshRequest = { mode: 'week'; week: WeekID } | { mode: 'month'; month: MonthID } | { mode: 'all' };
 
 export type RunStatus = 'running' | 'ok' | 'failed' | 'partial';
 export type SourceStatus = 'running' | 'ok' | 'failed';
@@ -164,6 +164,9 @@ export interface RefreshSnapshot {
 export interface RefreshResponse {
   run: Run;
   snapshots: RefreshSnapshot[];
+  /** Phase 2; always present from the Phase 2 server (optional only for older fixtures). */
+  metric_snapshots?: RefreshMetricSnapshot[];
+  month_snapshots?: RefreshMonthSnapshot[];
 }
 
 // ---- GET /snapshots/{id} ----------------------------------------------------
@@ -274,3 +277,212 @@ export interface Annotation {
 }
 
 export const ANNOTATION_MAX_CHARS = 10_000;
+
+// ---- Phase 2 (spec/api.md → "Phase 2 additions") ----------------------------
+
+/** `YYYY-MM` UTC calendar month. */
+export type MonthID = string;
+
+export interface RefreshMetricSnapshot {
+  id: number;
+  week: WeekID;
+  status_at_fetch: WeekStatus;
+  row_count: number;
+}
+
+export interface RefreshMonthSnapshot {
+  id: number;
+  month: MonthID;
+  status_at_fetch: WeekStatus;
+  row_count: number;
+  net_total: number;
+}
+
+export interface MetricWindow {
+  start: Timestamp;
+  end: Timestamp;
+}
+
+export interface Provenance {
+  source: string;
+  query: string;
+  aggregation: string;
+  window: MetricWindow;
+  fetched_at: Timestamp;
+}
+
+export type LimitLevel = 'ok' | 'near' | 'over';
+
+/** Exactly one of `value` / `gap` is non-null; `hint` only with a gap. */
+export interface MetricCell {
+  value: number | null;
+  unit: string;
+  gap: string | null;
+  hint: string | null;
+  provenance: Provenance;
+  limit_level: LimitLevel | null;
+}
+
+/** `id` is the run id for error batches. */
+export interface SnapshotRef {
+  id: number;
+  fetched_at: Timestamp;
+  status_at_fetch: WeekStatus;
+  run_id: number;
+  row_count: number;
+  stale: boolean;
+}
+
+// ---- GET /metrics/table -----------------------------------------------------
+
+export type MetricGroupId = 'vm' | 'cloudsql' | 'networking' | 'cloudrun' | 'gcs' | 'logging' | 'errors';
+
+export interface MetricColumn {
+  key: string;
+  label: string;
+  unit: string;
+}
+
+export interface MetricTableRow {
+  project: string;
+  /** `""` = per-project group-total row. */
+  resource: string;
+  /** One entry per column of the group. */
+  cells: Record<string, MetricCell>;
+}
+
+export interface MetricGroup {
+  group: MetricGroupId;
+  label: string;
+  columns: MetricColumn[];
+  rows: MetricTableRow[];
+}
+
+export interface MetricsTableResponse {
+  week: WeekID;
+  week_start: DateString;
+  week_end: DateString;
+  week_status: WeekStatus;
+  scope: Scope;
+  generated_at: Timestamp;
+  /** `null` when the week has no metric snapshot (every group then has `rows: []`). */
+  snapshot: SnapshotRef | null;
+  /** Always seven groups: vm, cloudsql, networking, cloudrun, gcs, logging, errors. */
+  groups: MetricGroup[];
+}
+
+// ---- GET /errors/table ------------------------------------------------------
+
+export type ErrorSource = 'cloudrun' | 'error_reporting' | 'load_balancer' | 'nginx';
+
+export interface ErrorTableRow {
+  source: ErrorSource;
+  project: string;
+  service: string;
+  c2xx: number | null;
+  c3xx: number | null;
+  c4xx: number | null;
+  c5xx: number | null;
+  groups: number | null;
+  occurrences: number | null;
+  gap: string | null;
+  hint: string | null;
+  provenance: Provenance;
+}
+
+export interface ErrorTotals {
+  c2xx: number | null;
+  c3xx: number | null;
+  c4xx: number | null;
+  c5xx: number | null;
+  groups: number | null;
+  occurrences: number | null;
+}
+
+export interface ErrorsTableResponse {
+  week: WeekID;
+  scope: Scope;
+  generated_at: Timestamp;
+  snapshot: SnapshotRef | null;
+  rows: ErrorTableRow[];
+  totals: ErrorTotals;
+}
+
+// ---- GET/PUT /limits --------------------------------------------------------
+
+export type LimitStatusLevel = 'ok' | 'near' | 'over' | 'stub' | 'no data';
+
+export interface LimitStatus {
+  id: string;
+  service: string;
+  label: string;
+  unit: string;
+  allowance: number;
+  default_allowance: number;
+  used: number | null;
+  projected: number | null;
+  pct: number | null;
+  level: LimitStatusLevel;
+  week_used: number | null;
+  stub: boolean;
+  reason: string | null;
+}
+
+export interface LimitsResponse {
+  week: WeekID;
+  month: MonthID;
+  month_start: DateString;
+  month_end: DateString;
+  warn_pct: number;
+  updated_at: Timestamp | null;
+  generated_at: Timestamp;
+  limits: LimitStatus[];
+}
+
+/** At least one key. Allowances are finite numbers >= 0 keyed by allowance id; warn_pct in (0, 100]. */
+export interface LimitsUpdate {
+  allowances?: Record<string, number>;
+  warn_pct?: number;
+}
+
+// ---- GET /cost/month --------------------------------------------------------
+
+/** Month-table column: the Cost-table `Column` plus the leading `month` kind. */
+export type MonthColumn = Omit<Column, 'kind'> & { kind: ColumnKind | 'month' };
+
+export type MonthStatus = 'partial' | 'settling' | 'final';
+
+export interface MonthRow {
+  month: MonthID;
+  month_start: DateString;
+  month_end: DateString;
+  month_status: MonthStatus;
+  snapshot: SnapshotRef | null;
+  /** Same cell shape and column keys as the Cost table; `null` when no snapshot exists. */
+  cells: Record<string, Cell> | null;
+  pct_change: number | null;
+  flagged: boolean;
+  invoice_months: string[];
+}
+
+export interface MonthSummary {
+  /** The current month, regardless of from/to. */
+  month: MonthID;
+  net: number;
+  target: number | null;
+  projected: number;
+  status: MonthStatus;
+  has_data: boolean;
+}
+
+export interface MonthTableResponse {
+  scope: Scope;
+  from: MonthID;
+  to: MonthID;
+  generated_at: Timestamp;
+  thresholds: Thresholds;
+  /** First column is `{key: "month", kind: "month"}`, then the Cost-table columns. */
+  columns: MonthColumn[];
+  rows: MonthRow[];
+  summary: MonthSummary;
+}

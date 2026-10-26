@@ -11,7 +11,6 @@ package refresh
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -20,15 +19,17 @@ import (
 
 	"github.com/smallTechOrg/cloud0/internal/billing"
 	"github.com/smallTechOrg/cloud0/internal/isoweek"
+	"github.com/smallTechOrg/cloud0/internal/monthcost"
 	"github.com/smallTechOrg/cloud0/internal/store"
 )
 
-// Mode selects the window: one week or every week first→current.
+// Mode selects what is refreshed: one week, one calendar month, or everything.
 type Mode string
 
 const (
-	ModeWeek Mode = "week"
-	ModeAll  Mode = "all"
+	ModeWeek  Mode = "week"
+	ModeMonth Mode = "month"
+	ModeAll   Mode = "all"
 )
 
 var (
@@ -40,6 +41,10 @@ var (
 	ErrInvalidWeek = errors.New("refresh: invalid week")
 	// ErrWeekOutOfRange means the week is before FirstWeek or after the current week.
 	ErrWeekOutOfRange = errors.New("refresh: week out of range")
+	// ErrInvalidMonth means the month is not a real calendar month.
+	ErrInvalidMonth = errors.New("refresh: invalid month")
+	// ErrMonthOutOfRange means the month is after the current month.
+	ErrMonthOutOfRange = errors.New("refresh: month out of range")
 	// ErrNoSource is recorded on the run when the billing client could not be
 	// built at startup and no more specific error was kept.
 	ErrNoSource = errors.New("refresh: billing source unavailable — see the bigquery.dryrun line in the server log")
@@ -60,6 +65,14 @@ type Runner struct {
 	SourceErr error
 	Logger    *slog.Logger
 
+	// Phase 2 sources. Collectors are the week-window sources (run
+	// concurrently, at most MaxConcurrency at once); Month is the calendar-month
+	// cost source (nil = not run); Projects are the configured GCP projects
+	// (used to show "source failed" gaps for a failed collector).
+	Collectors []Collector
+	Month      MonthSource
+	Projects   []string
+
 	FirstWeek  isoweek.Week  // CLOUD0_FIRST_WEEK
 	Settle     time.Duration // CLOUD0_SETTLE_HOURS
 	MarginDays int           // CLOUD0_PARTITION_MARGIN_DAYS
@@ -73,8 +86,10 @@ type Runner struct {
 // Result is what POST /api/v1/refresh returns: the finished run (sources carry
 // sql/params; the API strips them) and the snapshots it created.
 type Result struct {
-	Run       store.Run
-	Snapshots []store.SnapshotSummary
+	Run            store.Run
+	Snapshots      []store.SnapshotSummary
+	MetricSnaps    []store.MetricSnapshot
+	MonthSnapshots []store.MonthSnapshot
 }
 
 func (r *Runner) now() time.Time {
@@ -115,14 +130,79 @@ func (r *Runner) window(mode Mode, week isoweek.Week, now time.Time) (billing.Wi
 	return billing.Window{}, "", fmt.Errorf("%w: %q", ErrInvalidMode, mode)
 }
 
-// Run performs one refresh. Validation errors (ErrInvalidMode, ErrInvalidWeek,
-// ErrWeekOutOfRange) and ErrBusy are returned before any row is written. A
-// source failure is NOT an error: the run is recorded as failed with the
-// classified error on its source and returned normally. A non-nil error after
-// the run row exists means the store itself failed.
+// Request is one refresh request: the mode plus its week or month argument.
+type Request struct {
+	Mode  Mode
+	Week  isoweek.Week    // ModeWeek
+	Month monthcost.Month // ModeMonth
+}
+
+// Run performs a week or all refresh (see RunRequest).
 func (r *Runner) Run(ctx context.Context, mode Mode, week isoweek.Week) (Result, error) {
+	return r.RunRequest(ctx, Request{Mode: mode, Week: week})
+}
+
+// plan is the validated shape of one refresh.
+type plan struct {
+	trigger  store.RunTrigger
+	from, to isoweek.Week
+	billing  *billing.Window // nil for month mode
+	months   bool
+	mFrom    monthcost.Month
+	mTo      monthcost.Month
+	metrics  bool         // run the week-window sources
+	week     isoweek.Week // their window
+}
+
+func (r *Runner) plan(req Request, now time.Time) (plan, error) {
+	current := isoweek.Current(now)
+	switch req.Mode {
+	case ModeWeek, ModeAll:
+		w, trigger, err := r.window(req.Mode, req.Week, now)
+		if err != nil {
+			return plan{}, err
+		}
+		p := plan{trigger: trigger, from: w.From, to: w.To, billing: &w, metrics: true, week: req.Week}
+		if req.Mode == ModeAll {
+			p.months = true
+			p.mFrom = monthcost.Of(w.From.Start())
+			last := current.Sunday()
+			if last.After(now) {
+				last = now
+			}
+			p.mTo = monthcost.Of(last)
+			p.week = current.Prev()
+			if isoweek.Compare(p.week, r.FirstWeek) < 0 {
+				p.week = r.FirstWeek
+			}
+		}
+		return p, nil
+	case ModeMonth:
+		m := req.Month
+		if m.Year < 1 || m.Month < 1 || m.Month > 12 {
+			return plan{}, fmt.Errorf("%w: %v", ErrInvalidMonth, m)
+		}
+		if monthcost.Of(now).Before(m) {
+			return plan{}, fmt.Errorf("%w: %s is after the current month %s", ErrMonthOutOfRange, m, monthcost.Of(now))
+		}
+		last := m.Bounds().End.AddDate(0, 0, -1)
+		if last.After(now) {
+			last = now
+		}
+		return plan{trigger: store.TriggerRefreshMonth, from: isoweek.Of(m.Start()), to: isoweek.Of(last), months: true, mFrom: m, mTo: m}, nil
+	}
+	return plan{}, fmt.Errorf("%w: %q", ErrInvalidMode, req.Mode)
+}
+
+// RunRequest performs one refresh. Validation errors (ErrInvalidMode,
+// ErrInvalidWeek, ErrWeekOutOfRange, ErrInvalidMonth, ErrMonthOutOfRange) and
+// ErrBusy are returned before any row is written. A source failure is NOT an
+// error: the run is recorded (failed or partial) with the classified error on
+// its source and returned normally; a failed source never aborts the others.
+// A non-nil error after the run row exists means the store itself failed.
+func (r *Runner) RunRequest(ctx context.Context, req Request) (Result, error) {
 	startedAt := r.now()
-	window, trigger, err := r.window(mode, week, startedAt)
+	pl, err := r.plan(req, startedAt)
 	if err != nil {
 		return Result{}, err
 	}
@@ -132,23 +212,32 @@ func (r *Runner) Run(ctx context.Context, mode Mode, week isoweek.Week) (Result,
 	defer r.mu.Unlock()
 
 	// The run must complete and be recorded even if the HTTP client goes away;
-	// the billing source enforces its own 120 s deadline.
+	// every source enforces its own deadline.
 	ctx = context.WithoutCancel(ctx)
 
-	run, err := store.CreateRun(ctx, r.Store.DB, store.NewRun{Trigger: trigger, From: window.From, To: window.To, StartedAt: startedAt})
+	run, err := store.CreateRun(ctx, r.Store.DB, store.NewRun{Trigger: pl.trigger, From: pl.from, To: pl.to, StartedAt: startedAt})
 	if err != nil {
 		return Result{}, fmt.Errorf("refresh: create run: %w", err)
 	}
 	log := r.logger().With(slog.Int64("run_id", run.ID))
-	log.Info("refresh.start", slog.String("mode", string(mode)), slog.String("from", window.From.String()), slog.String("to", window.To.String()))
+	log.Info("refresh.start", slog.String("mode", string(req.Mode)), slog.String("from", pl.from.String()), slog.String("to", pl.to.String()))
 
-	res, fetchErr := r.fetch(ctx, window)
+	out := outcome{}
+	if pl.billing != nil {
+		out.billing = true
+		out.bres, out.berr = r.fetch(ctx, *pl.billing)
+		out.bEnd = r.now()
+		if out.bEnd.Before(startedAt) {
+			out.bEnd = startedAt
+		}
+	}
+	r.fetchOthers(ctx, pl, &out)
 	finishedAt := r.now()
 	if finishedAt.Before(startedAt) {
 		finishedAt = startedAt
 	}
 
-	src, snaps, recordErr := r.record(ctx, run, window, res, fetchErr, startedAt, finishedAt)
+	rec, recordErr := r.record(ctx, run, pl, out, startedAt, finishedAt)
 	if recordErr != nil {
 		// The transaction rolled back: mark the run failed with the store error
 		// so it never stays "running"; only if that fails too is it a 500.
@@ -158,20 +247,19 @@ func (r *Runner) Run(ctx context.Context, mode Mode, week isoweek.Week) (Result,
 		}
 		log.Error("refresh.done", slog.String("status", string(store.RunFailed)), slog.Int("snapshots", 0),
 			slog.Int64("duration_ms", r.now().Sub(startedAt).Milliseconds()), slog.String("error", msg))
-		return r.result(ctx, run.ID, nil)
+		return r.result(ctx, run.ID, record{})
 	}
 
-	logSource(log, src)
-	status := store.RunOK
-	if fetchErr != nil {
-		status = store.RunFailed
+	for _, s := range rec.sources {
+		logSource(log, s)
 	}
-	log.Info("refresh.done", slog.String("status", string(status)), slog.Int("snapshots", len(snaps)),
+	log.Info("refresh.done", slog.String("status", string(rec.status)), slog.Int("snapshots", len(rec.snaps)),
+		slog.Int("metric_snapshots", len(rec.metricSnaps)), slog.Int("month_snapshots", len(rec.monthSnaps)),
 		slog.Int64("duration_ms", finishedAt.Sub(startedAt).Milliseconds()))
-	return r.result(ctx, run.ID, snaps)
+	return r.result(ctx, run.ID, rec)
 }
 
-// fetch calls the source, or fails immediately when no client exists.
+// fetch calls the billing source, or fails immediately when no client exists.
 func (r *Runner) fetch(ctx context.Context, window billing.Window) (billing.Result, error) {
 	if r.Source == nil {
 		if r.SourceErr != nil {
@@ -180,62 +268,6 @@ func (r *Runner) fetch(ctx context.Context, window billing.Window) (billing.Resu
 		return billing.Result{}, ErrNoSource
 	}
 	return r.Source.Fetch(ctx, window)
-}
-
-// record writes, in one transaction, the run_sources row, one snapshot per
-// week of the window (only when the fetch succeeded) and the run's final status.
-func (r *Runner) record(ctx context.Context, run store.Run, window billing.Window, res billing.Result, fetchErr error, startedAt, finishedAt time.Time) (store.RunSource, []store.Snapshot, error) {
-	ns := store.NewRunSource{RunID: run.ID, Source: billing.SourceName, StartedAt: startedAt, FinishedAt: finishedAt, SQLText: res.Query.SQL}
-	if res.Query.SQL != "" {
-		ns.Params = res.Query.Params.Map()
-	}
-	if res.Stats.JobID != "" {
-		ns.JobID = ptr(res.Stats.JobID)
-	}
-	if fetchErr != nil {
-		f := billing.Classify(fetchErr)
-		ns.Status = store.SourceFailed
-		ns.ErrorCode, ns.ErrorMessage, ns.FixHint = ptr(string(f.Code)), ptr(f.Message), ptr(f.Hint)
-	} else {
-		ns.Status = store.SourceOK
-		processed, billed, cache, rows := res.Stats.BytesProcessed, res.Stats.BytesBilled, res.Stats.CacheHit, int64(len(res.Rows))
-		ns.BytesProcessed, ns.BytesBilled, ns.CacheHit, ns.RowsReturned = &processed, &billed, &cache, &rows
-	}
-
-	var src store.RunSource
-	var snaps []store.Snapshot
-	err := r.Store.WithTx(ctx, func(tx *sql.Tx) error {
-		var err error
-		if src, err = store.AddSource(ctx, tx, ns); err != nil {
-			return err
-		}
-		if fetchErr == nil {
-			weeks, err := window.Weeks()
-			if err != nil {
-				return err
-			}
-			byWeek := r.groupRows(window, res.Rows)
-			for _, w := range weeks {
-				snap, err := store.InsertSnapshot(ctx, tx, store.NewSnapshot{
-					Week: w, FetchedAt: startedAt, StatusAtFetch: isoweek.StatusAt(w, startedAt, r.Settle),
-					RunID: run.ID, RunSourceID: src.ID, Rows: byWeek[w],
-				})
-				if err != nil {
-					return err
-				}
-				snaps = append(snaps, snap)
-			}
-		}
-		status := store.RunOK
-		if fetchErr != nil {
-			status = store.RunFailed
-		}
-		return store.FinishRun(ctx, tx, run.ID, status, finishedAt, nil)
-	})
-	if err != nil {
-		return store.RunSource{}, nil, err
-	}
-	return src, snaps, nil
 }
 
 // groupRows buckets the fetched rows by ISO week. Rows outside the window
@@ -264,13 +296,14 @@ func (r *Runner) groupRows(window billing.Window, rows []billing.Row) map[isowee
 
 // result reloads the finished run (with its sources and snapshot ids) and
 // pairs it with the snapshot summaries.
-func (r *Runner) result(ctx context.Context, runID int64, snaps []store.Snapshot) (Result, error) {
+func (r *Runner) result(ctx context.Context, runID int64, rec record) (Result, error) {
 	run, err := store.GetRun(ctx, r.Store.DB, runID)
 	if err != nil {
 		return Result{}, fmt.Errorf("refresh: reload run %d: %w", runID, err)
 	}
-	out := Result{Run: run, Snapshots: make([]store.SnapshotSummary, 0, len(snaps))}
-	for _, s := range snaps {
+	out := Result{Run: run, Snapshots: make([]store.SnapshotSummary, 0, len(rec.snaps)),
+		MetricSnaps: rec.metricSnaps, MonthSnapshots: rec.monthSnaps}
+	for _, s := range rec.snaps {
 		out.Snapshots = append(out.Snapshots, s.Summary())
 	}
 	return out, nil

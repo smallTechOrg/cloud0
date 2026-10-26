@@ -97,6 +97,10 @@ func (s *Store) Migrate(ctx context.Context) ([]MigrationInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: migrate up: %w", err)
 	}
+	// Migration 0002 loosens a CHECK through writable_schema, which a connection
+	// that ran it keeps stale; drop idle connections so the next ones reload.
+	s.DB.SetMaxIdleConns(0)
+	s.DB.SetMaxIdleConns(4)
 	out := make([]MigrationInfo, 0, len(results))
 	for _, r := range results {
 		out = append(out, MigrationInfo{Version: r.Source.Version, Source: filepath.Base(r.Source.Path), Applied: true, AppliedAt: time.Now().UTC()})

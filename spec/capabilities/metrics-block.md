@@ -24,11 +24,11 @@ Reproduces the sheet's Metrics tab for a week: one row per resource with utilisa
 
 ## Business Rules
 - Row groups and metrics (UTC week window):
-  - VMs: CPU % `compute.googleapis.com/instance/cpu/utilization` (mean); Memory % `agent.googleapis.com/memory/percent_used` (mean, state=used); Disk % `agent.googleapis.com/disk/percent_used` (mean, state=used, root device). Instance identity read from `metric.labels.instance_name` for `compute.*` and from `resource.labels.instance_id` for `agent.*` (they differ — both parsed).
-  - Cloud SQL: `cloudsql.googleapis.com/database/{cpu,memory,disk}/utilization` (mean).
+  - VMs: CPU % `compute.googleapis.com/instance/cpu/utilization` (mean); Memory % `agent.googleapis.com/memory/percent_used` (mean, state=used); Disk % `agent.googleapis.com/disk/percent_used` (mean, state=used, root device), falling back to `agent.googleapis.com/disk/bytes_used` ÷ total when `percent_used` has no series. Instance identity read from `metric.labels.instance_name` for `compute.*` and from `resource.labels.instance_id` for `agent.*` (they differ — both parsed).
+  - Cloud SQL: CPU and disk: `cloudsql.googleapis.com/database/{cpu,disk}/utilization` (mean). Memory: `database/memory/total_usage` ÷ `database/memory/quota` (the `memory/utilization` metric reads 100% on shared-core tiers).
   - Networking: LB hours (forwarding rules × hours in week, from billing usage), outbound / inbound GB from billing usage SKUs for the week (billing is the source of record for egress volume).
   - Cloud Run: `run.googleapis.com/container/memory/allocation_time` (GiB-s, sum), `request_count` (sum), `container/cpu/allocation_time` (vCPU-s, sum), intercontinental egress from billing usage.
-  - Cloud Storage: `storage.googleapis.com/api/request_count` summed into Class A / Class B by `method_name`, `network/sent_bytes_count` (GB), `storage/total_bytes` (GB-month mean).
+  - Cloud Storage: `storage.googleapis.com/api/request_count` summed into Class A / Class B by the `method` label, `network/sent_bytes_count` (GB), `storage/total_bytes` (GB-month mean).
   - Cloud Logging: `logging.googleapis.com/billing/bytes_ingested` (GB, sum).
 - A VM without the Ops Agent (no `agent.*` series in the window) shows **"no agent"** in Memory/Disk — never 0 — with the hint "install the Ops Agent".
 - Values match the sheet's semantics (weekly mean % for utilisation, weekly sums for counts/volumes); each cell's provenance is the exact filter string + aggregation + window.

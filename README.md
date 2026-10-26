@@ -124,6 +124,7 @@ make e2e         # cd web && pnpm exec playwright test   (starts ./bin/cloud0 on
 - `make test` includes `internal/testenv`'s `TestCredentialsAlive`, which runs a real `SELECT 1` on BigQuery with the key from `.env`; it skips (and the gate is **not** green) only when the BigQuery variables are absent.
 - `tests/scaffold` builds the binary, migrates a temp DB, starts `serve` on an OS-assigned port and checks health, the served UI, its CSS/JS and the request log. It needs `make web-build` to have run first.
 - `tests/smoke` (Phase 1 live smoke) runs `make build`, migrates a temp DB, starts `serve` on an OS-assigned port with the real `.env` BigQuery settings, waits for `health.bigquery.status == "ok"`, refreshes `CLOUD0_SMOKE_WEEK` (default `2026-W42`), asserts Compute Engine net > 0 and Total GCP = Σ services ± $0.005, fetches `/` and every linked CSS/JS, checks the `request` / `refresh.done` log lines, then stops the server and deletes the temp DB. It runs for real against BigQuery (one query, well under 200 MB) and takes a few minutes because it rebuilds the UI. Run it alone with `GO111MODULE=on GOTOOLCHAIN=local /opt/homebrew/bin/go test ./tests/smoke/ -count=1 -v -timeout 15m`.
+- `tests/smoke/live_phase2_test.go` starts its own server, runs `refresh` mode `all` and then the smoke week against real GCP, and asserts the Phase 2 gate checks (section 8). Run it alone with `... go test ./tests/smoke/ -run Phase2 -count=1 -v`.
 - Every test uses its own temp SQLite file; nothing touches `./data/cloud0.db`.
 
 Gates (`spec/roadmap.md`):
@@ -165,9 +166,9 @@ Server log lines to expect in the terminal: `request` (one per HTTP request), an
 
 ### Labelled stubs (not bugs)
 
-- Tabs **Metrics, Errors, Attribution, Month, Budgets & Alerts, Vendors, Limits, Rightsizing, Targets** each show a "Coming in Phase N" panel (Metrics/Errors/Month/Limits: Phase 2; Attribution/Rightsizing/Targets: Phase 3; Budgets & Alerts/Vendors: Phase 4).
+- Tabs **Attribution, Budgets & Alerts, Vendors, Rightsizing, Targets** each show a "Coming in Phase N" panel (Attribution/Rightsizing/Targets: Phase 3; Budgets & Alerts/Vendors: Phase 4). Metrics, Errors, Month and Limits are real since Phase 2 (section 8).
 - The Cost table columns **AI Cost (Groq) (stub)** and **claude (usage) (stub)** show "—" in every cell (Phase 4).
-- Only the Cost tab is functional; there is no login, no scheduler and no AI in the product.
+- The Groq limits in the Limits tab are labelled stubs (Phase 4). There is no login, no scheduler and no AI in the product.
 
 ## 7. Phase 1 gate
 
@@ -177,6 +178,30 @@ make gate
 ```
 
 Runs, in order: `make build` → `./bin/cloud0 migrate up && ./bin/cloud0 migrate status` → `go vet ./...` → `go test ./internal/...` → `go test ./tests/... -p 1` (includes `tests/scaffold` and `tests/smoke`, real BigQuery) → `cd web && pnpm test` → `cd web && pnpm exec playwright test` (starts its own server on `CLOUD0_E2E_PORT` with a temp DB and walks the cost journey). Prerequisites: a filled `.env`, and Playwright's Chromium installed (section 2).
+
+## 8. Phase 2: Metrics, Errors, Month, Limits
+
+Four more tabs, all read-only views over data the **Refresh** buttons store (nothing is scheduled):
+
+| Tab | Shows |
+|---|---|
+| **Metrics** | The sheet's block for the selected week, in order: VMs (CPU / Memory / Disk %), Cloud SQL (CPU / Memory / Disk %), Networking, Cloud Run, Cloud Storage, Cloud Logging, Errors. A missing value is an explicit gap (`no agent`, `no data`, `source failed`, `not collected`) with a fix hint, never a `0`. Click a cell for its provenance: the exact Monitoring filter, aggregation, window and fetch time. Export CSV. |
+| **Errors** | Cloud Run 2xx/3xx/4xx/5xx per service, Error Reporting groups and occurrences per service, and cards for the load balancer (counts when its metric has data, otherwise a gap with the fix hint) and nginx (`not collected` with the fix hint). |
+| **Month** | Net cost per service per calendar month (UTC) with a summary line (current month net, target, projected), a month picker, **Refresh month** and CSV export. |
+| **Limits** | Month-to-date usage against the free-tier allowances (14 entries) with ok / near / over levels and a warn percentage; allowances and the warn percentage are editable and persist; the Groq entries are labelled stubs. |
+
+**Service account roles.** Phase 2 reads Cloud Monitoring, Cloud Logging and Error Reporting for every project in `CLOUD0_GCP_PROJECTS`, so the read-only service account needs viewer roles on **each** of those projects (`roles/monitoring.viewer`, `roles/logging.viewer`, `roles/errorreporting.viewer`), and the Error Reporting API (`clouderrorreporting.googleapis.com`) must be enabled on them. A project that lacks a role or API does not abort a refresh: that source is recorded as failed in the run log with a fix hint and its cells read `source failed`. No new environment variables are needed.
+
+**Refresh modes** (`POST /api/v1/refresh`): `week` runs billing plus every Phase 2 source for that week; `month` refreshes one calendar month's cost; `all` runs billing for every week, month cost for every month in range, and the Phase 2 sources for the last complete week. Each source is one row in the run log.
+
+**How to test it by hand.** `make build && ./bin/cloud0 migrate up && ./bin/cloud0 serve`, open http://127.0.0.1:8087/, pick `CLOUD0_SMOKE_WEEK` and click **Refresh week**; then:
+
+1. Metrics: group headings in the order above, CPU % for each VM, Memory/Disk values or an explicit gap; click a cell to see the Monitoring filter.
+2. Errors: a Cloud Run table with a non-zero 4xx for at least one service; the nginx card reads `not collected` with its hint.
+3. Month: month rows with a summary line containing `target` and `projected`; **Refresh month** fills the picked month.
+4. Limits: a level per allowance; edit one, Save, reload (it persists); enter `-5` to see the inline error.
+
+**Phase 2 gate.** Same command as Phase 1, `make gate`; the new checks are `tests/smoke/live_phase2_test.go` (refresh `all` then the smoke week against real GCP: CPU for at least one VM, numeric Cloud Run 4xx/5xx, limit statuses, month total equal to the sum of its service rows, one run-log row per source) and `web/e2e/phase2-journey.spec.ts` (Playwright walk of Metrics, Errors, Month and Limits with provenance and CSV). Real GCP calls are made; a skipped test is not a pass.
 
 ## Layout
 
@@ -188,12 +213,18 @@ internal/isoweek       ISO week math (bounds, status, ranges)
 internal/store         SQLite open/pragmas, goose migrations (migrations/0001_init.sql)
 internal/billing       BigQuery billing source (query builder, fetch, error classification)
 internal/costtable     pure cost-table assembly and drill-down grouping
-internal/refresh       refresh orchestrator (one run, one BigQuery job, snapshots)
+internal/refresh       refresh orchestrator (one run, one row per source, snapshots)
+internal/gcpsource     shared source result types, error classification, Monitoring helper
+internal/monitoring    Cloud Monitoring sources (VM, Cloud SQL, Cloud Run, GCS, Logging)
+internal/errorsrc      error sources (Cloud Run, Error Reporting, load balancer, nginx gaps)
+internal/billingusage  billing-usage quantities (egress, LB hours)
+internal/monthcost     calendar-month roll-up and summary
+internal/limits        free-tier allowances and proximity levels
 internal/httpapi       router, envelope, handlers for every endpoint in spec/api.md
 internal/webui         embedded UI (dist/ synced by make web-build) + placeholder page
 internal/testenv       test helpers: .env loading, BigQuery skip rule, temp DB, free port
 tests/scaffold         cross-process boot test
-tests/smoke            Phase 1 live smoke (real BigQuery, real server)
+tests/smoke            live smokes (Phase 1 cost refresh; Phase 2 metrics/errors/limits/month; real GCP, real server)
 web/                   Next.js (static export) app, Vitest, Playwright
 ```
 

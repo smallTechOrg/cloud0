@@ -10,7 +10,13 @@ import type {
   BreakdownResponse,
   CostTableResponse,
   ErrorEnvelope,
+  ErrorsTableResponse,
   Health,
+  LimitsResponse,
+  LimitsUpdate,
+  MetricsTableResponse,
+  MonthID,
+  MonthTableResponse,
   RefreshRequest,
   RefreshResponse,
   Run,
@@ -160,4 +166,38 @@ export function getAnnotation(week: WeekID): Promise<Annotation> {
 
 export function putAnnotation(week: WeekID, body: string): Promise<Annotation> {
   return request<Annotation>(`/annotations/${encodeURIComponent(week)}`, jsonInit('PUT', { body }));
+}
+
+// ---- Phase 2 endpoints ------------------------------------------------------
+
+export function getMetricsTable(params: { week?: WeekID; scope?: Scope } = {}): Promise<MetricsTableResponse> {
+  return request<MetricsTableResponse>(`/metrics/table${query(params)}`);
+}
+
+export function getErrorsTable(params: { week?: WeekID; scope?: Scope } = {}): Promise<ErrorsTableResponse> {
+  return request<ErrorsTableResponse>(`/errors/table${query(params)}`);
+}
+
+export function getLimits(week?: WeekID): Promise<LimitsResponse> {
+  return request<LimitsResponse>(`/limits${query({ week })}`);
+}
+
+export function putLimits(body: LimitsUpdate, week?: WeekID): Promise<LimitsResponse> {
+  return request<LimitsResponse>(`/limits${query({ week })}`, jsonInit('PUT', body));
+}
+
+export function getMonth(params: { from?: MonthID; to?: MonthID; scope?: Scope } = {}): Promise<MonthTableResponse> {
+  return request<MonthTableResponse>(`/cost/month${query(params)}`);
+}
+
+export function refreshWeek(week: WeekID): Promise<RefreshResponse> {
+  return postRefresh({ mode: 'week', week });
+}
+
+export function refreshMonth(month: MonthID): Promise<RefreshResponse> {
+  return postRefresh({ mode: 'month', month });
+}
+
+export function refreshAll(): Promise<RefreshResponse> {
+  return postRefresh({ mode: 'all' });
 }

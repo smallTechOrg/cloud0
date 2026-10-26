@@ -1,6 +1,6 @@
 // Nav tabs (spec/ui.md → Nav tabs). Tabs are client-side via location.hash so
-// the static export stays a single index.html. Every non-Cost tab is a labelled
-// StubPanel in Phase 1; the description is the exact paragraph the stub shows.
+// the static export stays a single index.html. Tabs whose phase is greater than 1 render a labelled
+// StubPanel; the description is the exact paragraph the stub shows.
 
 export type TabId =
   | 'cost'
@@ -27,14 +27,14 @@ export const TABS: readonly TabDef[] = [
   {
     id: 'metrics',
     label: 'Metrics',
-    phase: 2,
+    phase: 1,
     description:
       "Per-week block from Cloud Monitoring: VM CPU/Memory/Disk % (with 'no agent' gaps), Cloud SQL CPU/Mem/Disk %, Networking LB hours and egress GB, Cloud Run requests / CPU-s / GiB-s / egress, Cloud Storage ops and GB-month, Cloud Logging GB.",
   },
   {
     id: 'errors',
     label: 'Errors',
-    phase: 2,
+    phase: 1,
     description:
       '4xx/5xx per Cloud Run service from request counts, Error Reporting groups per service, load-balancer and nginx rows shown as gaps with fix hints until their logging is enabled.',
   },
@@ -48,7 +48,7 @@ export const TABS: readonly TabDef[] = [
   {
     id: 'month',
     label: 'Month',
-    phase: 2,
+    phase: 1,
     description: 'Calendar-month roll-up of net cost per service and total vs the monthly target.',
   },
   {
@@ -67,7 +67,7 @@ export const TABS: readonly TabDef[] = [
   {
     id: 'limits',
     label: 'Limits',
-    phase: 2,
+    phase: 1,
     description:
       'Usage vs free-tier allowances (GCS, Cloud Run, Cloud Logging, disk throughput, Groq rate limits) with proximity warnings.',
   },

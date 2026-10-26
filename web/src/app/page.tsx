@@ -5,6 +5,10 @@ import { AnnotationField } from '@/components/AnnotationField';
 import { CellInspector, type InspectorTarget } from '@/components/CellInspector';
 import { CostTable } from '@/components/CostTable';
 import { EmptyState } from '@/components/EmptyState';
+import ErrorsPanel from '@/components/ErrorsPanel';
+import LimitsPanel from '@/components/LimitsPanel';
+import MetricsPanel from '@/components/MetricsPanel';
+import MonthPanel from '@/components/MonthPanel';
 import { ErrorBanner, bannerFromError, type BannerData } from '@/components/ErrorBanner';
 import { NavTabs } from '@/components/NavTabs';
 import { RunLogDrawer } from '@/components/RunLogDrawer';
@@ -437,7 +441,15 @@ export default function Page() {
         <NavTabs active={tab} />
 
         <main className={styles.panel} id={tab} data-testid="active-panel" data-tab={tab}>
-          {tab !== 'cost' ? (
+          {tab === 'metrics' && week ? (
+            <MetricsPanel week={week} scope={scope} refreshToken={tableVersion} />
+          ) : tab === 'errors' && week ? (
+            <ErrorsPanel week={week} scope={scope} refreshToken={tableVersion} />
+          ) : tab === 'month' ? (
+            <MonthPanel scope={scope} refreshToken={tableVersion} />
+          ) : tab === 'limits' && week ? (
+            <LimitsPanel week={week} refreshToken={tableVersion} />
+          ) : tab !== 'cost' ? (
             <StubPanel tab={activeTab.label} phase={activeTab.phase} description={activeTab.description} />
           ) : (
             <>

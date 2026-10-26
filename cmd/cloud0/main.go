@@ -25,8 +25,12 @@ import (
 
 	"github.com/smallTechOrg/cloud0/internal/billing"
 	"github.com/smallTechOrg/cloud0/internal/config"
+	"github.com/smallTechOrg/cloud0/internal/errorsrc"
+	"github.com/smallTechOrg/cloud0/internal/gcpsource"
 	"github.com/smallTechOrg/cloud0/internal/httpapi"
 	"github.com/smallTechOrg/cloud0/internal/logging"
+	"github.com/smallTechOrg/cloud0/internal/monitoring"
+	"github.com/smallTechOrg/cloud0/internal/monthcost"
 	"github.com/smallTechOrg/cloud0/internal/refresh"
 	"github.com/smallTechOrg/cloud0/internal/store"
 	"github.com/smallTechOrg/cloud0/internal/webui"
@@ -208,7 +212,8 @@ func serve() int {
 	// A failure never stops the server: it is logged and reported in
 	// /api/v1/health (bigquery.status "error" with a fix hint).
 	runner := &refresh.Runner{Store: st, Logger: logger, FirstWeek: cfg.FirstWeek,
-		Settle: time.Duration(cfg.SettleHours) * time.Hour, MarginDays: cfg.PartitionMarginDays}
+		Settle: time.Duration(cfg.SettleHours) * time.Hour, MarginDays: cfg.PartitionMarginDays, Projects: cfg.Projects}
+	phase2 := refresh.Sources{Projects: cfg.Projects, BillingTable: cfg.BillingExportTable, MarginDays: cfg.PartitionMarginDays}
 	var dryErr error
 	src, err := billing.New(ctx, &cfg)
 	if err != nil {
@@ -217,6 +222,8 @@ func serve() int {
 	} else {
 		defer src.Close()
 		runner.Source = src
+		phase2.BigQuery = src.Client()
+		runner.Month = refresh.BQMonthSource{Client: src.Client(), Table: cfg.BillingExportTable, MarginDays: cfg.PartitionMarginDays}
 		dctx, cancel := context.WithTimeout(ctx, billing.QueryTimeout)
 		dry, derr := src.DryRun(dctx)
 		cancel()
@@ -225,6 +232,36 @@ func serve() int {
 			logger.Info("bigquery.dryrun", slog.String("status", "ok"), slog.String("week", dry.Week.String()), slog.Int64("bytes_processed", dry.BytesProcessed))
 		}
 	}
+	if phase2.BigQuery == nil {
+		phase2.BigQueryErr = dryErr
+		runner.Month = failingMonth{err: dryErr}
+	}
+
+	// Phase 2 clients. A client that cannot be built never stops the server: its
+	// sources fail with the classified error on every refresh instead.
+	if l, closeFn, err := monitoring.NewLister(ctx); err != nil {
+		phase2.MonitoringErr = err
+		logger.Error("monitoring.client", slog.String("error", err.Error()))
+	} else {
+		defer closeFn()
+		phase2.Monitoring = l
+	}
+	if l, closeFn, err := errorsrc.NewErrorReportingLister(ctx); err != nil {
+		phase2.ErrReportErr = err
+		logger.Error("errorreporting.client", slog.String("error", err.Error()))
+	} else {
+		defer closeFn()
+		phase2.ErrReporting = l
+	}
+	if l, closeFn, err := errorsrc.NewLogCounter(ctx, cfg.Projects); err != nil {
+		phase2.LogsErr = err
+		logger.Error("logging.client", slog.String("error", err.Error()))
+	} else {
+		defer closeFn()
+		phase2.Logs = l
+	}
+	runner.Collectors = refresh.StandardCollectors(phase2)
+
 	bqHealth := httpapi.NewBigQueryHealth(time.Now(), dryErr)
 	if dryErr != nil {
 		f := billing.Classify(dryErr)
@@ -265,4 +302,12 @@ func serve() int {
 		return exitRuntime
 	}
 	return 0
+}
+
+// failingMonth is the month-cost source when no BigQuery client exists: every
+// month refresh records the construction error on its run_sources row.
+type failingMonth struct{ err error }
+
+func (f failingMonth) FetchMonths(context.Context, monthcost.Month, monthcost.Month) ([]monthcost.Row, gcpsource.Provenance, error) {
+	return nil, gcpsource.Provenance{}, f.err
 }

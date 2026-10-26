@@ -74,6 +74,11 @@ func NewWithClient(client *bigquery.Client, table string, marginDays int) (*Sour
 // Close releases the underlying client.
 func (s *Source) Close() error { return s.client.Close() }
 
+// Client exposes the underlying BigQuery client so the Phase 2 month-cost and
+// billing-usage sources reuse the same connection and credentials. The caller
+// must not Close it; Source.Close owns it.
+func (s *Source) Client() *bigquery.Client { return s.client }
+
 // Table is the fully-qualified export table this source queries.
 func (s *Source) Table() string { return s.table }
 
