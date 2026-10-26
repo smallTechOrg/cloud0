@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/smallTechOrg/cloud0/internal/billing"
 	"github.com/smallTechOrg/cloud0/internal/webui"
 )
 
@@ -15,6 +16,22 @@ type BigQueryHealth struct {
 	ErrorCode *string   `json:"error_code"`
 	Message   *string   `json:"message"`
 	FixHint   *string   `json:"fix_hint"`
+}
+
+// NewBigQueryHealth turns the startup dry-run outcome (nil error = ok) into
+// the health object, classifying failures into a code, message and fix hint.
+func NewBigQueryHealth(checkedAt time.Time, err error) BigQueryHealth {
+	h := BigQueryHealth{Status: "ok", CheckedAt: checkedAt.UTC().Truncate(time.Second)}
+	if err == nil {
+		return h
+	}
+	f := billing.Classify(err)
+	code, msg, hint := string(f.Code), f.Message, f.Hint
+	h.Status, h.ErrorCode, h.Message = "error", &code, &msg
+	if hint != "" {
+		h.FixHint = &hint
+	}
+	return h
 }
 
 // HealthResponse is the body of GET /api/v1/health.

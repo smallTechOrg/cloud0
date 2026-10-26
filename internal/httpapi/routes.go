@@ -41,12 +41,20 @@ func (r *router) finish() {
 
 const apiPrefix = "/api/v1"
 
-// registerRoutes wires every /api/v1 endpoint. Scaffold: health + config.
-// Phase 1 slice S3 appends the cost/refresh/snapshots/runs/settings/annotations
-// routes here.
+// registerRoutes wires every /api/v1 endpoint of spec/api.md.
 func registerRoutes(mux *http.ServeMux, deps Deps) {
 	r := newRouter(mux, deps)
 	r.handle(http.MethodGet, apiPrefix+"/health", deps.handleHealth)
 	r.handle(http.MethodGet, apiPrefix+"/config", deps.handleConfig)
+	r.handle(http.MethodGet, apiPrefix+"/cost/table", deps.handleCostTable)
+	r.handle(http.MethodPost, apiPrefix+"/refresh", deps.handleRefresh)
+	r.handle(http.MethodGet, apiPrefix+"/snapshots/{id}", deps.handleSnapshot)
+	r.handle(http.MethodGet, apiPrefix+"/snapshots/{id}/breakdown", deps.handleBreakdown)
+	r.handle(http.MethodGet, apiPrefix+"/runs", deps.handleRuns)
+	r.handle(http.MethodGet, apiPrefix+"/runs/{id}", deps.handleRun)
+	r.handle(http.MethodGet, apiPrefix+"/settings", deps.handleGetSettings)
+	r.handle(http.MethodPut, apiPrefix+"/settings", deps.handlePutSettings)
+	r.handle(http.MethodGet, apiPrefix+"/annotations/{week}", deps.handleGetAnnotation)
+	r.handle(http.MethodPut, apiPrefix+"/annotations/{week}", deps.handlePutAnnotation)
 	r.finish()
 }

@@ -59,7 +59,9 @@ e2e:
 ## Gates (spec/roadmap.md)
 scaffold-gate: build migrate test
 
-gate: scaffold-gate web-test e2e
+# Phase 1 gate: build -> migrate up/status -> vet + internal + tests/{scaffold,smoke}
+# (serialised, real BigQuery) -> Vitest -> Playwright journey.
+gate: build migrate test web-test e2e
 
 clean:
 	rm -rf bin web/out web/.next

@@ -6,7 +6,7 @@ Design and contract: [`spec/`](spec/) (`architecture.md`, `api.md`, `data.md`, `
 
 **All commands below run from the repository root** (`/Users/sai/Workspace/Code/cloud0`) unless the code block says otherwise. The dashboard URL is **http://127.0.0.1:8087/**.
 
-## What exists today (scaffold) vs. what Phase 1 adds
+## Scaffold vs. Phase 1 (this table describes the delta; Phase 1 is the target state of this repo)
 
 | Area | Today (scaffold) | Phase 1 |
 |---|---|---|
@@ -98,14 +98,16 @@ Playwright's browser is installed once:
 ./bin/cloud0 serve
 ```
 
-Open **http://127.0.0.1:8087/**. Expected: the cloud0 shell with the status line reading `connected · v0.1.0 · db ok · migrations current · ui real · bigquery not checked (Phase 1)`, a configuration card (projects, weeks shown, default week), the Cost tab showing the labelled placeholder "Cost table arrives in Phase 1", and the other tabs badged with their phase. The terminal prints one JSON line per request. Stop with Ctrl-C (graceful shutdown).
+Open **http://127.0.0.1:8087/** (set `CLOUD0_PORT=8087` in `.env`; 8087 is also the default). Expected (Phase 1): the cloud0 header with a week picker defaulting to the last complete week, scope "All billed projects", the Cost table with every row reading "not fetched — Refresh", and the status line `connected · db ok · migrations current · bigquery ok`. The terminal prints one JSON line per request. Stop with Ctrl-C (graceful shutdown).
 
 Verify from another terminal:
 
 ```sh
 # working directory: repo root
-curl -s http://127.0.0.1:8087/api/v1/health    # {"ok":true,"version":"0.1.0","db":"ok","migrations":"current","ui":"real","bigquery":null}
-curl -s http://127.0.0.1:8087/api/v1/config    # {"projects":[...],"first_week":"2026-W18","current_week":"...","default_week":"...","settle_hours":48,"now":"..."}
+curl -s http://127.0.0.1:8087/api/v1/health   # {"ok":true,"version":"0.1.0","db":"ok","migrations":"current","ui":"real","bigquery":{"status":"ok",...}}
+curl -s http://127.0.0.1:8087/api/v1/config   # {"projects":[...],"first_week":"2026-W18","current_week":"...","default_week":"...",...}
+curl -s -X POST http://127.0.0.1:8087/api/v1/refresh -d '{"mode":"week","week":"2026-W42"}'
+curl -s http://127.0.0.1:8087/api/v1/cost/table | jq '.rows[] | select(.week=="2026-W42")'    # jq is optional
 ```
 
 `make run` is the same as `./bin/cloud0 serve`.
@@ -121,6 +123,7 @@ make e2e         # cd web && pnpm exec playwright test   (starts ./bin/cloud0 on
 
 - `make test` includes `internal/testenv`'s `TestCredentialsAlive`, which runs a real `SELECT 1` on BigQuery with the key from `.env`; it skips (and the gate is **not** green) only when the BigQuery variables are absent.
 - `tests/scaffold` builds the binary, migrates a temp DB, starts `serve` on an OS-assigned port and checks health, the served UI, its CSS/JS and the request log. It needs `make web-build` to have run first.
+- `tests/smoke` (Phase 1 live smoke) runs `make build`, migrates a temp DB, starts `serve` on an OS-assigned port with the real `.env` BigQuery settings, waits for `health.bigquery.status == "ok"`, refreshes `CLOUD0_SMOKE_WEEK` (default `2026-W42`), asserts Compute Engine net > 0 and Total GCP = Σ services ± $0.005, fetches `/` and every linked CSS/JS, checks the `request` / `refresh.done` log lines, then stops the server and deletes the temp DB. It runs for real against BigQuery (one query, well under 200 MB) and takes a few minutes because it rebuilds the UI. Run it alone with `GO111MODULE=on GOTOOLCHAIN=local /opt/homebrew/bin/go test ./tests/smoke/ -count=1 -v -timeout 15m`.
 - Every test uses its own temp SQLite file; nothing touches `./data/cloud0.db`.
 
 Gates (`spec/roadmap.md`):
@@ -128,8 +131,52 @@ Gates (`spec/roadmap.md`):
 ```sh
 # working directory: repo root
 make scaffold-gate   # build → migrate → test
-make gate            # scaffold-gate → web-test → e2e
+make gate            # Phase 1 gate: build → migrate → test (vet, internal, tests/scaffold + tests/smoke) → web-test → e2e
 ```
+
+## 6. Phase 1 walkthrough (how to test it by hand)
+
+```sh
+# working directory: repo root
+make build && ./bin/cloud0 migrate up && ./bin/cloud0 serve
+```
+
+Open **http://127.0.0.1:8087/** (needs the BigQuery variables from section 1 in `.env`). Then:
+
+1. **First load.** The week picker defaults to the last complete week, scope is "All billed projects", and every row reads "not fetched — Refresh" (never zeros).
+2. **Refresh all weeks.** Click it (about 10–30 s, progress text visible): every week fills from the first week to the current one with one BigQuery job. The current week is badged *partial*, last week *settling* or *final*.
+3. **Reconcile.** Compare Total GCP of a known week with the spreadsheet; expect roughly equal (small differences come from the sheet's manual day boundaries).
+4. **Drill down.** Click a Compute Engine cell: the inspector shows the exact SQL, parameters, BigQuery job id, bytes, fetch time and status. The SKU list appears; click a SKU for resource rows with gross / credits / net. Networking shows gross > net (discount credits); VM manager shows 0 net with gross offset by credits.
+5. **Export CSV.** Click **Export CSV** and open the file in a spreadsheet: same header order, 2-dp values.
+6. **Anomaly thresholds.** Change them to 5% / $5: more rows are flagged. Set them back. They persist across reload.
+7. **Notes.** Type a note on the selected week, Save, reload: it persists (also across a server restart).
+8. **Run log.** Open the run log drawer: runs with duration, rows and bytes billed.
+9. **Scope.** Switch to one project: numbers change and provenance shows the scope-filter line.
+
+Single-week refresh from the shell:
+
+```sh
+# working directory: repo root
+curl -s -X POST http://127.0.0.1:8087/api/v1/refresh -d '{"mode":"week","week":"2026-W42"}'
+curl -s http://127.0.0.1:8087/api/v1/runs
+```
+
+Server log lines to expect in the terminal: `request` (one per HTTP request), and for each refresh `refresh.start`, `source.done`, `refresh.done`.
+
+### Labelled stubs (not bugs)
+
+- Tabs **Metrics, Errors, Attribution, Month, Budgets & Alerts, Vendors, Limits, Rightsizing, Targets** each show a "Coming in Phase N" panel (Metrics/Errors/Month/Limits: Phase 2; Attribution/Rightsizing/Targets: Phase 3; Budgets & Alerts/Vendors: Phase 4).
+- The Cost table columns **AI Cost (Groq) (stub)** and **claude (usage) (stub)** show "—" in every cell (Phase 4).
+- Only the Cost tab is functional; there is no login, no scheduler and no AI in the product.
+
+## 7. Phase 1 gate
+
+```sh
+# working directory: repo root
+make gate
+```
+
+Runs, in order: `make build` → `./bin/cloud0 migrate up && ./bin/cloud0 migrate status` → `go vet ./...` → `go test ./internal/...` → `go test ./tests/... -p 1` (includes `tests/scaffold` and `tests/smoke`, real BigQuery) → `cd web && pnpm test` → `cd web && pnpm exec playwright test` (starts its own server on `CLOUD0_E2E_PORT` with a temp DB and walks the cost journey). Prerequisites: a filled `.env`, and Playwright's Chromium installed (section 2).
 
 ## Layout
 
@@ -139,10 +186,14 @@ internal/config        env + .env loading, validation, redacted view
 internal/logging       slog JSON logger, request-log middleware
 internal/isoweek       ISO week math (bounds, status, ranges)
 internal/store         SQLite open/pragmas, goose migrations (migrations/0001_init.sql)
-internal/httpapi       router, envelope, health + config handlers
+internal/billing       BigQuery billing source (query builder, fetch, error classification)
+internal/costtable     pure cost-table assembly and drill-down grouping
+internal/refresh       refresh orchestrator (one run, one BigQuery job, snapshots)
+internal/httpapi       router, envelope, handlers for every endpoint in spec/api.md
 internal/webui         embedded UI (dist/ synced by make web-build) + placeholder page
 internal/testenv       test helpers: .env loading, BigQuery skip rule, temp DB, free port
 tests/scaffold         cross-process boot test
+tests/smoke            Phase 1 live smoke (real BigQuery, real server)
 web/                   Next.js (static export) app, Vitest, Playwright
 ```
 

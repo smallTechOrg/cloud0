@@ -23,9 +23,11 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/smallTechOrg/cloud0/internal/billing"
 	"github.com/smallTechOrg/cloud0/internal/config"
 	"github.com/smallTechOrg/cloud0/internal/httpapi"
 	"github.com/smallTechOrg/cloud0/internal/logging"
+	"github.com/smallTechOrg/cloud0/internal/refresh"
 	"github.com/smallTechOrg/cloud0/internal/store"
 	"github.com/smallTechOrg/cloud0/internal/webui"
 )
@@ -202,10 +204,35 @@ func serve() int {
 		return exitPending
 	}
 
-	// Step 3 of the startup sequence (BigQuery dry-run) arrives with Phase 1
-	// slice S3; the scaffold reports bigquery: null in /api/v1/health.
+	// Startup step 3: build the BigQuery source and dry-run the billing query.
+	// A failure never stops the server: it is logged and reported in
+	// /api/v1/health (bigquery.status "error" with a fix hint).
+	runner := &refresh.Runner{Store: st, Logger: logger, FirstWeek: cfg.FirstWeek,
+		Settle: time.Duration(cfg.SettleHours) * time.Hour, MarginDays: cfg.PartitionMarginDays}
+	var dryErr error
+	src, err := billing.New(ctx, &cfg)
+	if err != nil {
+		dryErr = err
+		runner.SourceErr = err
+	} else {
+		defer src.Close()
+		runner.Source = src
+		dctx, cancel := context.WithTimeout(ctx, billing.QueryTimeout)
+		dry, derr := src.DryRun(dctx)
+		cancel()
+		dryErr = derr
+		if derr == nil {
+			logger.Info("bigquery.dryrun", slog.String("status", "ok"), slog.String("week", dry.Week.String()), slog.Int64("bytes_processed", dry.BytesProcessed))
+		}
+	}
+	bqHealth := httpapi.NewBigQueryHealth(time.Now(), dryErr)
+	if dryErr != nil {
+		f := billing.Classify(dryErr)
+		logger.Error("bigquery.dryrun", slog.String("status", "error"), slog.String("error_code", string(f.Code)), slog.String("message", f.Message), slog.String("fix_hint", f.Hint))
+	}
 
-	deps := httpapi.Deps{Config: cfg, Store: st, Logger: logger, Version: version}
+	deps := httpapi.Deps{Config: cfg, Store: st, Logger: logger, Version: version, Refresh: runner,
+		BigQuery: func() *httpapi.BigQueryHealth { h := bqHealth; return &h }}
 	srv := httpapi.New(deps)
 
 	ln, err := net.Listen("tcp", cfg.Addr())

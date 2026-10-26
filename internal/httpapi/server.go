@@ -9,6 +9,7 @@ import (
 
 	"github.com/smallTechOrg/cloud0/internal/config"
 	"github.com/smallTechOrg/cloud0/internal/logging"
+	"github.com/smallTechOrg/cloud0/internal/refresh"
 	"github.com/smallTechOrg/cloud0/internal/store"
 	"github.com/smallTechOrg/cloud0/internal/webui"
 )
@@ -25,9 +26,11 @@ type Deps struct {
 	UI http.Handler
 	// UIMode is reported by /health; empty means webui.CurrentMode().
 	UIMode webui.Mode
-	// BigQuery reports the startup dry-run result for /health. It is nil in
-	// the scaffold (health shows "bigquery": null) and set by slice S3.
+	// BigQuery reports the startup dry-run result for /health; nil means
+	// "bigquery": null.
 	BigQuery func() *BigQueryHealth
+	// Refresh runs POST /refresh; main builds it with the real BigQuery source.
+	Refresh *refresh.Runner
 }
 
 func (d Deps) now() time.Time {

@@ -188,8 +188,11 @@ func TestBoot_BuildMigrateServeHealthUIAndLogs(t *testing.T) {
 	if health["db"] != "ok" || health["migrations"] != "current" {
 		t.Fatalf("health db/migrations: %v", health)
 	}
-	if v, present := health["bigquery"]; !present || v != nil {
-		t.Fatalf("scaffold health.bigquery must be null: %v", health)
+	// Phase 1 wired the startup BigQuery dry-run: the field is an object
+	// ({status, checked_at, ...}); it may be "ok" or "error" depending on
+	// credentials, but it must be present and never null.
+	if v, ok := health["bigquery"].(map[string]any); !ok || v["status"] == nil {
+		t.Fatalf("health.bigquery must be an object with a status: %v", health)
 	}
 
 	// 5. GET / is the real UI with live assets
