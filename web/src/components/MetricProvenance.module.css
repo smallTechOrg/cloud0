@@ -1,0 +1,69 @@
+.card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 0.6rem 0.9rem 0.8rem;
+  margin-top: 0.75rem;
+  max-width: 80ch;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.close {
+  background: none;
+  border: none;
+  font-size: 1.25rem;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.gap {
+  margin: 0.4rem 0;
+  color: var(--muted);
+}
+
+.hint {
+  color: var(--text);
+  font-style: normal;
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.15rem 0.9rem;
+  margin: 0.4rem 0;
+  font-size: 0.9rem;
+}
+
+.kv dt {
+  color: var(--muted);
+}
+
+.kv dd {
+  margin: 0;
+}
+
+.sub {
+  margin: 0.5rem 0 0.2rem;
+  font-size: 0.85rem;
+}
+
+.pre {
+  margin: 0;
+  padding: 0.5rem;
+  background: #f3f5f8;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  overflow: auto;
+  max-height: 10rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

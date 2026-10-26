@@ -1,0 +1,36 @@
+{
+  "displayName": "cloud0-compute-engine-monthly",
+  "amount": {
+    "specifiedAmount": {
+      "currencyCode": "INR",
+      "units": "1234",
+      "nanos": 500000000
+    }
+  },
+  "budgetFilter": {
+    "services": [
+      "services/AAAA-BBBB-CCCC",
+      "services/DDDD-EEEE-FFFF"
+    ],
+    "calendarPeriod": "MONTH",
+    "creditTypesTreatment": "INCLUDE_ALL_CREDITS"
+  },
+  "thresholdRules": [
+    {
+      "thresholdPercent": 0.9,
+      "spendBasis": "CURRENT_SPEND"
+    },
+    {
+      "thresholdPercent": 1.1,
+      "spendBasis": "FORECASTED_SPEND"
+    }
+  ],
+  "notificationsRule": {
+    "monitoringNotificationChannels": [
+      "projects/proj-a/notificationChannels/111",
+      "projects/proj-a/notificationChannels/222"
+    ],
+    "disableDefaultIamRecipients": true,
+    "schemaVersion": "1.0"
+  }
+}

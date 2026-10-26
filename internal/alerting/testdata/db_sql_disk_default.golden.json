@@ -1,0 +1,41 @@
+{
+  "combiner": "OR",
+  "conditions": [
+    {
+      "conditionThreshold": {
+        "aggregations": [
+          {
+            "alignmentPeriod": "60s",
+            "crossSeriesReducer": "REDUCE_MAX",
+            "groupByFields": [
+              "resource.label.database_id"
+            ],
+            "perSeriesAligner": "ALIGN_MEAN"
+          }
+        ],
+        "comparison": "COMPARISON_GT",
+        "duration": "300s",
+        "filter": "resource.type = \"cloudsql_database\" AND metric.type = \"cloudsql.googleapis.com/database/disk/utilization\"",
+        "thresholdValue": 0.85,
+        "trigger": {
+          "count": 1
+        }
+      },
+      "displayName": "Cloud SQL disk utilization \u003e 85 % for 5 min"
+    }
+  ],
+  "displayName": "cloud0: Cloud SQL disk high",
+  "documentation": {
+    "content": "**Cloud SQL disk utilization is above 85 %** for 5 min on a database in this project.\n\nFree space (purge/vacuum, drop old data) or enable automatic storage increase before the disk fills and the database stops accepting writes.\n\nManaged by cloud0 (template `sql_disk_high`); edit it from the Alerts tab, not in the console.",
+    "mimeType": "text/markdown"
+  },
+  "enabled": true,
+  "notificationChannels": [
+    "projects/proj-a/notificationChannels/111"
+  ],
+  "severity": "ERROR",
+  "userLabels": {
+    "cloud0-template": "sql_disk_high",
+    "managed-by": "cloud0"
+  }
+}

@@ -1,0 +1,30 @@
+# secrets
+.env
+.env.*
+!.env.example
+*.json.key
+sa-key*.json
+
+# build output
+bin/
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# frontend
+web/node_modules/
+web/out/
+web/.next/
+web/next-env.d.ts
+web/*.tsbuildinfo
+web/test-results/
+web/playwright-report/
+web/blob-report/
+
+# embedded UI build (synced by `make web`; only the keep-file is tracked)
+internal/webui/dist/*
+!internal/webui/dist/.gitkeep
+
+# OS
+.DS_Store

@@ -1,0 +1,399 @@
+.panel {
+  display: grid;
+  gap: 1rem;
+  padding: 0.5rem 0;
+}
+
+.section {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.8rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.sectionHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1rem;
+}
+
+.sectionHead h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.small {
+  font-size: 0.82rem;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82rem;
+}
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---- Coverage -------------------------------------------------------- */
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.75rem;
+}
+
+.stat {
+  display: grid;
+}
+
+.statValue {
+  font-size: 1.15rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.statLabel {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.cover {
+  display: flex;
+  height: 0.8rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #e5e7eb;
+}
+
+.coverAttributed {
+  background: var(--ok);
+}
+
+.coverShared {
+  background: #60a5fa;
+}
+
+.coverUnattributed {
+  background: #f59e0b;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.dot {
+  display: inline-block;
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  margin-right: 0.3rem;
+}
+
+/* ---- Buttons / inputs -------------------------------------------------- */
+
+.btn,
+.primary,
+.danger,
+.linkBtn {
+  font: inherit;
+  padding: 0.25rem 0.7rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.danger {
+  color: var(--err);
+}
+
+.linkBtn {
+  border: none;
+  background: none;
+  color: var(--accent);
+  padding: 0.1rem 0.3rem;
+  text-decoration: underline;
+}
+
+.btn:disabled,
+.primary:disabled,
+.danger:disabled,
+.linkBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.btn:focus-visible,
+.primary:focus-visible,
+.danger:focus-visible,
+.linkBtn:focus-visible,
+.input:focus-visible,
+.select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.input,
+.select {
+  font: inherit;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  min-width: 0;
+}
+
+.input {
+  width: 100%;
+}
+
+.narrow {
+  width: 5rem;
+  text-align: right;
+}
+
+.invalid {
+  border-color: var(--err);
+}
+
+.err {
+  color: var(--err);
+  font-size: 0.82rem;
+  margin: 0.15rem 0 0;
+  white-space: normal;
+}
+
+.notice {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--stub-border);
+  background: var(--stub-bg);
+  border-radius: 6px;
+  font-size: 0.88rem;
+}
+
+.okNotice {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--ok);
+  border-radius: 6px;
+  font-size: 0.88rem;
+}
+
+/* ---- Tables ---------------------------------------------------------------- */
+
+.scroller {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.table th,
+.table td {
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.table thead th {
+  font-size: 0.78rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.disabledRow td {
+  color: var(--muted);
+  background: var(--stub-bg);
+}
+
+.errorRow td {
+  background: #fef2f2;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.badge_seed {
+  background: #eef2ff;
+  color: #3730a3;
+}
+
+.badge_user {
+  background: #ecfdf5;
+  color: #065f46;
+}
+
+.badge_proposed {
+  background: #fdf4ff;
+  color: #86198f;
+}
+
+.chip {
+  display: inline-block;
+  font-size: 0.75rem;
+  padding: 0.05rem 0.45rem;
+  margin: 0 0.25rem 0.15rem 0;
+  border-radius: 999px;
+  background: #eef2f7;
+  border: 1px solid var(--border);
+}
+
+.conf_high {
+  border-color: var(--ok);
+}
+
+.conf_medium {
+  border-color: #f59e0b;
+}
+
+.conf_low {
+  border-style: dashed;
+}
+
+.fieldGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+  gap: 0.3rem;
+}
+
+.rowActions {
+  display: flex;
+  gap: 0.2rem;
+  flex-wrap: nowrap;
+}
+
+.aliasRow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto;
+  gap: 0.4rem;
+  align-items: center;
+  max-width: 34rem;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.tierHead {
+  margin: 0.5rem 0 0.2rem;
+  font-size: 0.9rem;
+}
+
+.beforeAfter {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.progressTrack {
+  height: 0.55rem;
+  border-radius: 999px;
+  background: #e5e7eb;
+  overflow: hidden;
+  max-width: 24rem;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--ok);
+}
+
+.command {
+  display: flex;
+  gap: 0.4rem;
+  align-items: flex-start;
+}
+
+.command code {
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: #f3f4f6;
+  border-radius: 4px;
+  padding: 0.15rem 0.35rem;
+  font-size: 0.78rem;
+}
+
+.drawer {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.8rem 1rem;
+  background: var(--panel);
+  border: 2px solid var(--accent);
+  border-radius: 8px;
+}
+
+.trail {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.trailStep {
+  padding: 0.3rem 0.5rem;
+  border-left: 3px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.trailMatched {
+  border-left-color: #f59e0b;
+}
+
+.trailApplied {
+  border-left-color: var(--ok);
+  background: #f0fdf4;
+}
+
+.skeleton {
+  height: 5rem;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s linear infinite;
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}

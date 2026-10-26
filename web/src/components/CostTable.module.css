@@ -1,0 +1,200 @@
+.scroller {
+  overflow: auto;
+  max-height: calc(100vh - 260px);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: max-content;
+  min-width: 100%;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.caption {
+  caption-side: top;
+  text-align: left;
+  padding: 0.4rem 0.75rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.table th,
+.table td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.35rem 0.6rem;
+  vertical-align: top;
+}
+
+.table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #eef1f5;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.weekHead,
+.weekCell {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--panel);
+  text-align: left;
+  min-width: 11rem;
+  border-right: 1px solid var(--border);
+}
+
+.table thead .weekHead {
+  z-index: 3;
+  background: #eef1f5;
+}
+
+.numHead {
+  text-align: right;
+}
+
+.stubHead {
+  color: var(--muted);
+  background: var(--stub-bg) !important;
+}
+
+.stubSuffix {
+  font-weight: 400;
+  color: var(--warn);
+}
+
+.extraMarker {
+  margin-left: 0.25rem;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.row:hover td,
+.row:hover th {
+  background: #f8fafc;
+}
+
+.selected td,
+.selected th,
+.selected:hover td,
+.selected:hover th {
+  background: #eef4ff;
+}
+
+.weekId {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 600;
+}
+
+.weekMeta {
+  color: var(--muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.flagDot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--err);
+}
+
+.noteIcon {
+  color: var(--accent);
+  cursor: help;
+}
+
+.num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.stubCell {
+  color: var(--muted);
+  background: var(--stub-bg);
+}
+
+.cellButton {
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  background: none;
+  border: none;
+  padding: 0.1rem 0.25rem;
+  margin: -0.1rem -0.25rem;
+  color: var(--text);
+  cursor: pointer;
+  text-align: right;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  border-radius: 4px;
+}
+
+.cellButton:hover {
+  background: #dbe4ff;
+}
+
+.cellButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.flaggedCell {
+  border-left: 3px solid var(--err);
+}
+
+.flag {
+  font-size: 0.75rem;
+  color: var(--err);
+  font-weight: 600;
+}
+
+.notFetched {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.link {
+  font: inherit;
+  font-style: normal;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link:disabled {
+  color: var(--muted);
+  cursor: progress;
+}
+
+.skeletonRow td,
+.skeletonRow th {
+  height: 2.6rem;
+}
+
+.skeleton {
+  display: block;
+  height: 1rem;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s linear infinite;
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
