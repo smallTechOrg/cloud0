@@ -59,6 +59,8 @@ SELECT
   sku.description       AS sku,
   resource.name         AS resource_name,
   resource.global_name  AS resource_global_name,
+  TO_JSON_STRING(labels)        AS labels_json,
+  TO_JSON_STRING(system_labels) AS system_labels_json,
   SUM(cost)             AS gross,
   SUM((SELECT IFNULL(SUM(c.amount), 0) FROM UNNEST(credits) AS c)) AS credits,
   COUNT(*)              AS line_items
@@ -66,9 +68,10 @@ FROM `<CLOUD0_BILLING_EXPORT_TABLE>`
 WHERE DATE(_PARTITIONTIME) BETWEEN @part_start AND @part_end
   AND usage_start_time >= @usage_start
   AND usage_start_time <  @usage_end
-GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9
+GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11
 ```
 
+- Phase 3 adds `labels_json` / `system_labels_json` (`TO_JSON_STRING` of the export's repeated `labels` / `system_labels`, e.g. `[{"key":"env","value":"prod"}]`; `[]` when none) so attribution rules can match GCP labels; they are grouped on, so a resource whose label set changes mid-week yields two rows (sums unchanged). Snapshots fetched before migration 0005 have NULL label columns.
 - `net = gross + credits` is computed in Go per row (credits are negative numbers). Credits are summed per line item via the correlated subquery — never `LEFT JOIN UNNEST(credits)`, which would multiply `cost` by the number of credits on a line.
 - Parameters: `@usage_start` = Monday 00:00:00 UTC of the first week in the window, `@usage_end` = Monday 00:00:00 UTC after the last week (exclusive); `@part_start` = `DATE(@usage_start) − CLOUD0_PARTITION_MARGIN_DAYS`, `@part_end` = `DATE(@usage_end) + CLOUD0_PARTITION_MARGIN_DAYS` (default margin 1 day each side).
 - `EXTRACT(ISOWEEK …)` in BigQuery is UTC-based for TIMESTAMP, matching the Mon–Sun UTC week.

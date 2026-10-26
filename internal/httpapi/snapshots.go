@@ -79,6 +79,9 @@ func (d Deps) handleBreakdown(w http.ResponseWriter, r *http.Request) *APIError 
 	if level == store.LevelResource {
 		bq.SKU = q.Get("sku")
 	}
+	if handled, aerr := d.breakdownFilterHook(w, r, bq); handled {
+		return aerr
+	}
 	res, err := store.Breakdown(ctx, d.Store.DB, bq)
 	if err != nil {
 		return ErrInternal(err)

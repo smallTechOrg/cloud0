@@ -15,7 +15,7 @@ One page at `/`, served by the Go binary. Tabs are client-side (`#cost`, `#metri
 │ Errors ◦   │                                                              │  cell     │
 │ Attribution◦                                                              │  click)   │
 │ Month ◦    │                                                              │           │
-│ Budgets &  │                                                              │           │
+│ Alerts/Inc/│                                                              │           │
 │  Alerts ◦  │                                                              │           │
 │ Vendors ◦  │                                                              │           │
 │ Limits ◦   │                                                              │           │
@@ -44,7 +44,9 @@ One page at `/`, served by the Go binary. Tabs are client-side (`#cost`, `#metri
 | Errors | 2 | `StubPanel` — "Coming in Phase 2 — 4xx/5xx per Cloud Run service from request counts, Error Reporting groups per service, load-balancer and nginx rows shown as gaps with fix hints until their logging is enabled." |
 | Attribution | 3 | `StubPanel` — "Coming in Phase 3 — product and environment breakdown from GCP labels, project and resource-name rules; rules editor; unattributed list; label suggestions." |
 | Month | 2 | `StubPanel` — "Coming in Phase 2 — calendar-month roll-up of net cost per service and total vs the monthly target." |
-| Budgets & Alerts | 4 | `StubPanel` — "Coming in Phase 4 — view/create/edit Billing budgets and Monitoring alert policies with notification channels; change history." |
+| Alerts | 1 (real) | Policies (managed/unmanaged, adopt & fix), templates (parameter forms), uptime checks, channels + severity routing, coverage, snoozes; every change is Preview → Apply (`spec/api.md → Alerts additions`). |
+| Incidents | 1 (real) | Open alerts panel + alert history per ISO week. |
+| Budgets | 1 (real) | Budgets list (managed/unmanaged), suggestions, create/edit/delete via Preview → Apply, change history. |
 | Vendors | 4 | `StubPanel` — "Coming in Phase 4 — Groq usage via API and Claude usage via CLI, feeding the two vendor columns of the Cost table." |
 | Limits | 2 | `StubPanel` — "Coming in Phase 2 — usage vs free-tier allowances (GCS, Cloud Run, Cloud Logging, disk throughput, Groq rate limits) with proximity warnings." |
 | Rightsizing | 3 | `StubPanel` — "Coming in Phase 3 — VMs under ~15% CPU for weeks, idle disks and unused static IPs, with the evidence window." |

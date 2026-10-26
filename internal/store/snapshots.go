@@ -92,10 +92,15 @@ type SnapshotRow struct {
 	SKU                string
 	ResourceName       *string // nil = unattributed
 	ResourceGlobalName *string
-	Gross              float64
-	Credits            float64 // ≤ 0 normally
-	Net                float64 // always gross + credits once stored
-	LineItems          int64
+	// LabelsJSON / SystemLabelsJSON hold the export's labels as a JSON array of
+	// {"key","value"} objects (migration 0005); nil for snapshots fetched
+	// before labels were captured.
+	LabelsJSON       *string
+	SystemLabelsJSON *string
+	Gross            float64
+	Credits          float64 // ≤ 0 normally
+	Net              float64 // always gross + credits once stored
+	LineItems        int64
 }
 
 // NewSnapshot is the input to InsertSnapshot. Row Net values are recomputed
@@ -175,19 +180,19 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 	return snap, nil
 }
 
-const rowColumns = "snapshot_id, project_id, service_id, service, sku_id, sku, resource_name, resource_global_name, gross, credits, net, line_items"
+const rowColumns = "snapshot_id, project_id, service_id, service, sku_id, sku, resource_name, resource_global_name, labels_json, system_labels_json, gross, credits, net, line_items"
 
 func insertRowBatch(ctx context.Context, q Querier, snapshotID int64, rows []SnapshotRow) error {
 	var sb strings.Builder
 	sb.WriteString("INSERT INTO snapshot_rows (" + rowColumns + ") VALUES ")
-	args := make([]any, 0, len(rows)*12)
+	args := make([]any, 0, len(rows)*14)
 	for i, r := range rows {
 		if i > 0 {
 			sb.WriteString(", ")
 		}
-		sb.WriteString("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+		sb.WriteString("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 		args = append(args, snapshotID, r.ProjectID, r.ServiceID, r.Service, r.SKUID, r.SKU,
-			nullableString(r.ResourceName), nullableString(r.ResourceGlobalName), r.Gross, r.Credits, r.Net, r.LineItems)
+			nullableString(r.ResourceName), nullableString(r.ResourceGlobalName), nullableString(r.LabelsJSON), nullableString(r.SystemLabelsJSON), r.Gross, r.Credits, r.Net, r.LineItems)
 	}
 	_, err := q.ExecContext(ctx, sb.String(), args...)
 	return err
@@ -289,11 +294,12 @@ func scanRows(rows *sql.Rows) ([]SnapshotRow, error) {
 	out := make([]SnapshotRow, 0, 64)
 	for rows.Next() {
 		var r SnapshotRow
-		var name, global sql.NullString
-		if err := rows.Scan(&r.ID, &r.SnapshotID, &r.ProjectID, &r.ServiceID, &r.Service, &r.SKUID, &r.SKU, &name, &global, &r.Gross, &r.Credits, &r.Net, &r.LineItems); err != nil {
+		var name, global, labels, sysLabels sql.NullString
+		if err := rows.Scan(&r.ID, &r.SnapshotID, &r.ProjectID, &r.ServiceID, &r.Service, &r.SKUID, &r.SKU, &name, &global, &labels, &sysLabels, &r.Gross, &r.Credits, &r.Net, &r.LineItems); err != nil {
 			return nil, err
 		}
 		r.ResourceName, r.ResourceGlobalName = fromNullString(name), fromNullString(global)
+		r.LabelsJSON, r.SystemLabelsJSON = fromNullString(labels), fromNullString(sysLabels)
 		out = append(out, r)
 	}
 	return out, rows.Err()

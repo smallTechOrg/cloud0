@@ -8,6 +8,8 @@ export type TabId =
   | 'errors'
   | 'attribution'
   | 'month'
+  | 'alerts'
+  | 'incidents'
   | 'budgets'
   | 'vendors'
   | 'limits'
@@ -41,7 +43,7 @@ export const TABS: readonly TabDef[] = [
   {
     id: 'attribution',
     label: 'Attribution',
-    phase: 3,
+    phase: 1,
     description:
       'Product and environment breakdown from GCP labels, project and resource-name rules; rules editor; unattributed list; label suggestions.',
   },
@@ -52,11 +54,23 @@ export const TABS: readonly TabDef[] = [
     description: 'Calendar-month roll-up of net cost per service and total vs the monthly target.',
   },
   {
-    id: 'budgets',
-    label: 'Budgets & Alerts',
-    phase: 4,
+    id: 'alerts',
+    label: 'Alerts',
+    phase: 1,
     description:
-      'View/create/edit Billing budgets and Monitoring alert policies with notification channels; change history.',
+      'Manage Cloud Monitoring alert policies from templates (VM, Cloud SQL, Cloud Run/LB errors, uptime), channels with severity routing, snoozes and coverage; every change is previewed before it is applied.',
+  },
+  {
+    id: 'incidents',
+    label: 'Incidents',
+    phase: 1,
+    description: 'Open alerts right now, and alerts opened per ISO week and policy.',
+  },
+  {
+    id: 'budgets',
+    label: 'Budgets',
+    phase: 1,
+    description: 'Billing budgets with suggested amounts, create/edit through preview and apply, and the change history.',
   },
   {
     id: 'vendors',
@@ -74,13 +88,13 @@ export const TABS: readonly TabDef[] = [
   {
     id: 'rightsizing',
     label: 'Rightsizing',
-    phase: 3,
+    phase: 1,
     description: 'VMs under ~15% CPU for weeks, idle disks and unused static IPs, with the evidence window.',
   },
   {
     id: 'targets',
     label: 'Targets',
-    phase: 3,
+    phase: 1,
     description: 'Per-product monthly targets and progress; GCP budgets mirrored as targets in Phase 4.',
   },
 ];

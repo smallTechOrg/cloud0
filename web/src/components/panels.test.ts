@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { ApiError } from '@/lib/api';
 import { errorSamplesFixture, errorsTableFixture, metricsTableFixture } from '@/lib/fixtures2';
 import type { ErrorsTableResponse, MetricsTableResponse } from '@/lib/types';
+import { sampleKey } from './ErrorSample';
 import { ErrorsView, type SampleState } from './ErrorsPanel';
 import { MetricsView } from './MetricsPanel';
 
@@ -96,10 +97,13 @@ describe('ErrorsView', () => {
 
   it('does not emphasise zero counts', () => {
     const zero: ErrorsTableResponse = JSON.parse(JSON.stringify(errorsTableFixture));
-    const r = zero.rows[0];
-    if (!r) throw new Error('fixture changed');
-    r.c4xx = 0;
-    r.c5xx = 0;
+    for (const r of zero.rows) {
+      if (r.source !== 'cloudrun') continue;
+      r.c4xx = 0;
+      r.c5xx = 0;
+    }
+    zero.totals.c4xx = 0;
+    zero.totals.c5xx = 0;
     expect(errorsHtml(zero)).not.toContain('data-emphasis');
   });
 
@@ -118,7 +122,7 @@ describe('ErrorsView', () => {
   });
 
   it('opens provenance for the selected row', () => {
-    const html = errorsHtml(errorsTableFixture, 2);
+    const html = errorsHtml(errorsTableFixture, 5);
     expect(html).toContain('data-testid="metric-provenance"');
     expect(html).toContain('loadbalancing.googleapis.com');
   });
@@ -128,29 +132,33 @@ describe('ErrorsView explainability', () => {
   const view = (props: Partial<Parameters<typeof ErrorsView>[0]> = {}) =>
     renderToStaticMarkup(createElement(ErrorsView, { data: errorsTableFixture, selected: null, onSelect: noop, ...props }));
 
-  it('always shows the "How these are counted" note with the scanner explanation', () => {
+  it('keeps the short "How these are counted" note with the scanner explanation under All sources', () => {
     const html = view();
     expect(html).toContain('data-testid="errors-how-counted"');
     expect(html).toContain('How these are counted');
     expect(html).toContain('run.googleapis.com/request_count');
     expect(html).toContain('internet scanners');
     expect(html).toContain('5xx are the real application-failure signal');
+    expect(html.indexOf('errors-look-at')).toBeLessThan(html.indexOf('All sources'));
   });
 
-  it('offers Details only on Cloud Run rows and hides the detail until expanded', () => {
+  it('offers Details on triage items, closed until expanded; the table has no detail rows', () => {
     const collapsed = view({ onToggleExpand: noop });
-    expect(collapsed.match(/data-testid="errors-expand"/g)?.length).toBe(1);
-    expect(collapsed).not.toContain('data-testid="errors-detail-row"');
+    expect(collapsed).toContain('data-testid="triage-details-button"');
+    expect(collapsed).not.toContain('data-testid="errors-detail"');
+    const open = view({ onToggleExpand: noop, expanded: new Set([0]), onSample: noop });
+    expect(open).toContain('Server errors (5xx)');
+    expect(open).toContain('Client errors that may be real');
+    expect(open).toContain('404s: scanner-like vs possible broken links');
   });
 
-  it('expanded row shows error-code chips (5xx emphasised), the sample button and a safe Logs Explorer link', () => {
-    const html = view({ onToggleExpand: noop, expanded: new Set([0]), onSample: noop });
+  it('shows code chips (5xx first), the Logs Explorer link and the sample button on a triage item', () => {
+    const html = view({ onSample: noop });
     expect(html).toContain('404 ×11');
-    expect(html).toContain('401 ×1');
     expect(html).toContain('data-kind="5xx"');
     expect(html).not.toContain('200 ×');
-    expect(html.indexOf('502 ×1')).toBeLessThan(html.indexOf('404 ×11'));
-    expect(html).toContain('Explain &amp; sample');
+    expect(html.indexOf('502 ×3')).toBeLessThan(html.indexOf('404 ×11'));
+    expect(html).toContain('Show failing requests');
     expect(html).toContain('target="_blank"');
     expect(html).toContain('rel="noopener noreferrer"');
     expect(html).toContain('console.cloud.google.com/logs/query');
@@ -158,24 +166,22 @@ describe('ErrorsView explainability', () => {
 
   it('says so when a stored batch predates exact codes', () => {
     const old: ErrorsTableResponse = JSON.parse(JSON.stringify(errorsTableFixture));
-    const r = old.rows[0];
-    if (!r) throw new Error('fixture changed');
-    r.by_code = null;
-    expect(view({ data: old, expanded: new Set([0]) })).toContain('not stored for this batch');
+    for (const r of old.rows) if (r.source === 'cloudrun') r.by_code = null;
+    const html = view({ data: old });
+    expect(html).toContain('refresh the week for exact codes');
+    expect(html).toContain('data-testid="errors-refresh-hint"');
   });
 
   it('renders loading, error, result, empty and out-of-retention sample states', () => {
-    const at = (sample: SampleState) => view({ expanded: new Set([0]), samples: { 0: sample }, onSample: noop });
+    const at = (sample: SampleState) => view({ samples: { [sampleKey(0, 'server')]: sample }, onSample: noop });
     expect(at({ status: 'loading' })).toContain('data-testid="errors-sample-loading"');
     const err = at({ status: 'error', error: new ApiError(403, 'permission_denied', 'denied', 'grant roles/logging.viewer') });
     expect(err).toContain('data-testid="errors-sample-error"');
+    expect(err).toContain('denied');
     expect(err).toContain('roles/logging.viewer');
-    const done = at({ status: 'done', data: errorSamplesFixture });
+    const done = at({ status: 'done', data: { ...errorSamplesFixture, focus: 'server' } });
     expect(done).toContain('/.git/config');
-    expect(done).toContain('looks like scanner traffic');
-    expect(done).toContain('90%');
-    expect(done).toContain('of the sampled 4xx responses look like scanner traffic');
-    expect(done).toContain('203.0.113.0/24');
+    expect(done).toContain('projects/project-a/traces/abc');
     expect(done).toContain('most recent entries');
     expect(at({ status: 'done', data: { ...errorSamplesFixture, scanned: 0, top_paths: [], entries: [], scanner_share_4xx: null } })).toContain('data-testid="errors-sample-empty"');
     expect(at({ status: 'done', data: { ...errorSamplesFixture, scanned: 0, out_of_retention: true, retention_note: '30 days' } })).toContain('Out of retention');

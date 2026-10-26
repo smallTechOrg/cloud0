@@ -379,6 +379,36 @@ export interface MetricsTableResponse {
 
 export type ErrorSource = 'cloudrun' | 'error_reporting' | 'load_balancer' | 'nginx';
 
+export type ErrorVerdict = 'needs_attention' | 'watch' | 'noise' | 'healthy';
+
+/** Which slice of a service's failing requests an on-demand log sample returns. */
+export type SampleFocus = 'server' | 'client' | 'notfound' | 'all';
+
+export interface ErrorRates {
+  requests: number;
+  rate_5xx: number;
+  rate_client_4xx: number;
+  rate_404: number;
+}
+
+export interface ErrorChange {
+  /** Previous ISO week, e.g. "2026-W41". */
+  prev_week: WeekID;
+  prev_5xx: number;
+  prev_client_4xx: number;
+  prev_by_code: Record<string, number> | null;
+  /** This week's 5xx divided by last week's; null when last week had none. */
+  ratio_5xx: number | null;
+}
+
+export interface ErrorsSummary {
+  needs_attention: number;
+  watch: number;
+  noise: number;
+  healthy: number;
+  headline: string;
+}
+
 export interface ErrorTableRow {
   source: ErrorSource;
   project: string;
@@ -393,6 +423,13 @@ export interface ErrorTableRow {
   by_code: Record<string, number> | null;
   /** Cloud Run only: Google Cloud Logs Explorer deep link for this service and week. */
   logs_url: string | null;
+  /** Triage fields: present on every non-total row from a triage-aware backend. */
+  verdict?: ErrorVerdict;
+  reasons?: string[];
+  /** 1 = look at first; 0 for healthy rows. */
+  rank?: number;
+  rates?: ErrorRates;
+  change?: ErrorChange | null;
   gap: string | null;
   hint: string | null;
   provenance: Provenance;
@@ -414,6 +451,7 @@ export interface ErrorsTableResponse {
   snapshot: SnapshotRef | null;
   rows: ErrorTableRow[];
   totals: ErrorTotals;
+  summary?: ErrorsSummary;
 }
 
 // ---- GET /errors/samples ----------------------------------------------------
@@ -456,6 +494,9 @@ export interface ErrorSamplesResponse {
   scanner_share_4xx: number | null;
   heuristic_note: string;
   entries: SampleEntry[];
+  focus?: SampleFocus;
+  /** Log entries that could not be parsed into a request. */
+  unparsed?: number;
 }
 
 // ---- GET/PUT /limits --------------------------------------------------------
@@ -535,4 +576,459 @@ export interface MonthTableResponse {
   columns: MonthColumn[];
   rows: MonthRow[];
   summary: MonthSummary;
+}
+
+// ---- Alerts feature (spec/api.md → "Alerts additions"; Go: internal/alerting/types.go) ----
+
+export type AlertSeverity = 'CRITICAL' | 'ERROR' | 'WARNING';
+export type AlertKind = 'policy' | 'uptime_check' | 'budget' | 'snooze' | 'channel';
+export type AlertAction = 'create' | 'update' | 'delete' | 'enable' | 'disable' | 'end';
+export type HistoryKind = AlertKind | 'routing';
+export type AdoptShape =
+  | 'zero_cpu_spike'
+  | 'high_memory_load'
+  | 'uptime_backend_down'
+  | 'uptime_down_2h'
+  | 'budget_account';
+export type TemplateId =
+  | 'vm_cpu_high'
+  | 'vm_memory_high'
+  | 'vm_disk_high'
+  | 'run_5xx_burst'
+  | 'run_5xx_rate'
+  | 'run_error_logged'
+  | 'lb_5xx_burst'
+  | 'sql_down'
+  | 'sql_cpu_high'
+  | 'sql_memory_high'
+  | 'sql_disk_high'
+  | 'uptime_down'
+  | 'run_401_403_spike';
+
+/** Raw GCP REST JSON (AlertPolicy, UptimeCheckConfig, Budget …). */
+export type RawJson = Record<string, unknown>;
+
+export interface ProjectFailure {
+  project: string;
+  code: string;
+  message: string;
+  hint: string | null;
+}
+
+export interface AlertsStatus {
+  alerts_configured: boolean;
+  billing_account_configured: boolean;
+  projects: string[];
+  generated_at: Timestamp;
+}
+
+export interface AlertChannel {
+  name: string;
+  project: string;
+  type: string;
+  display_name: string;
+  enabled: boolean;
+  verification_status: 'VERIFIED' | 'UNVERIFIED' | 'VERIFICATION_STATUS_UNSPECIFIED';
+  address: string;
+  warnings: string[];
+}
+
+export interface ChannelLabelSpec {
+  key: string;
+  description: string;
+  required: boolean;
+  sensitive: boolean;
+}
+
+export interface ChannelDescriptor {
+  type: string;
+  display_name: string;
+  creatable: boolean;
+  hint: string;
+  labels: ChannelLabelSpec[];
+}
+
+export interface ChannelsResponse {
+  channels: AlertChannel[];
+  descriptors: ChannelDescriptor[];
+  generated_at: Timestamp;
+}
+
+/** Create body for kind "channel"; sensitive_labels are passed through to GCP only. */
+export interface ChannelDraft {
+  project: string;
+  type: string;
+  display_name: string;
+  labels: Record<string, string>;
+  sensitive_labels?: Record<string, string>;
+}
+
+export interface ChannelRef {
+  name: string;
+  display_name: string;
+  type: string;
+  verification_status: string;
+}
+
+export interface ConditionSummary {
+  display_name: string;
+  type: 'threshold' | 'absent' | 'log_match' | 'other';
+  summary: string;
+  filter: string;
+  comparison: string;
+  threshold: number | null;
+  duration_seconds: number | null;
+}
+
+export interface PolicyView {
+  name: string;
+  project: string;
+  display_name: string;
+  enabled: boolean;
+  /** '' when unset on the live policy. */
+  severity: AlertSeverity | '';
+  managed: boolean;
+  template_id: TemplateId | '';
+  instance: string;
+  conditions: ConditionSummary[];
+  channels: ChannelRef[];
+  adopt_shape: AdoptShape | '';
+  warnings: string[];
+  updated_at: Timestamp | null;
+  raw_json: RawJson;
+}
+
+export interface PoliciesResponse {
+  policies: PolicyView[];
+  projects_failed: ProjectFailure[];
+  generated_at: Timestamp;
+}
+
+export interface TemplateParams {
+  threshold?: number;
+  duration_seconds?: number;
+  window_seconds?: number;
+  rate_limit_seconds?: number;
+  severity?: AlertSeverity;
+  enabled?: boolean;
+  channel_override?: string[];
+  instance?: string;
+  uptime_check_ids?: string[];
+}
+
+export interface ParamSpec {
+  key: string;
+  label: string;
+  type: 'number' | 'int' | 'bool' | 'enum';
+  unit: string;
+  min: number | null;
+  max: number | null;
+  options: string[];
+  help: string;
+}
+
+export interface CoveredResource {
+  project: string;
+  resource_type: 'vm' | 'cloudsql' | 'cloud_run' | 'lb' | 'uptime_check';
+  name: string;
+  covered: boolean;
+  note: string;
+}
+
+export interface AlertTemplate {
+  id: TemplateId;
+  kind: 'metric_threshold' | 'metric_ratio' | 'log_match' | 'uptime' | 'metric_absent';
+  title: string;
+  description: string;
+  severity: AlertSeverity;
+  default_enabled: boolean;
+  param_specs: ParamSpec[];
+  defaults: TemplateParams;
+  params: TemplateParams | null;
+  installed: string[];
+  covered_resources: CoveredResource[];
+}
+
+export interface TemplatesResponse {
+  templates: AlertTemplate[];
+  generated_at: Timestamp;
+}
+
+export interface UptimeCheck {
+  name: string;
+  project: string;
+  display_name: string;
+  host: string;
+  path: string;
+  port: number;
+  use_ssl: boolean;
+  period_seconds: number;
+  timeout_seconds: number;
+  content_match: string;
+  managed: boolean;
+  raw_json: RawJson;
+}
+
+export interface UptimeChecksResponse {
+  checks: UptimeCheck[];
+  generated_at: Timestamp;
+}
+
+export interface UptimeDraft {
+  project: string;
+  display_name: string;
+  host: string;
+  path: string;
+  port: number;
+  use_ssl: boolean;
+  period_seconds: 60 | 300 | 600 | 900;
+  timeout_seconds: number;
+  content_match: string;
+}
+
+export interface Snooze {
+  name: string;
+  project: string;
+  display_name: string;
+  policy_names: string[];
+  start_time: Timestamp;
+  end_time: Timestamp;
+  state: 'active' | 'scheduled' | 'expired';
+}
+
+export interface SnoozesResponse {
+  snoozes: Snooze[];
+  generated_at: Timestamp;
+}
+
+export interface SnoozeDraft {
+  project: string;
+  display_name: string;
+  policy_names: string[];
+  start_time?: Timestamp;
+  duration_seconds: number;
+}
+
+export interface Incident {
+  id: string;
+  project: string;
+  policy_name: string;
+  policy_display_name: string;
+  severity: AlertSeverity | '';
+  state: 'open' | 'closed';
+  opened_at: Timestamp;
+  closed_at: Timestamp | null;
+  resource_type: string;
+  resource_name: string;
+  summary: string;
+  url: string;
+}
+
+export interface IncidentsResponse {
+  incidents: Incident[];
+  total: number;
+  projects_failed: ProjectFailure[];
+  generated_at: Timestamp;
+}
+
+export interface AlertHistoryRow {
+  project: string;
+  policy_name: string;
+  policy_display_name: string;
+  severity: AlertSeverity | '';
+  opened: number;
+  still_open: number;
+  resources: string[];
+  first_opened_at: Timestamp;
+  last_opened_at: Timestamp;
+}
+
+export interface AlertHistoryResponse {
+  week: WeekID;
+  total_opened: number;
+  still_open: number;
+  rows: AlertHistoryRow[];
+  projects_failed: ProjectFailure[];
+  generated_at: Timestamp;
+}
+
+export interface CoverageSignal {
+  signal: 'cpu' | 'memory' | 'disk' | 'errors' | 'down';
+  covered: boolean;
+  policies: string[];
+  reason: string;
+}
+
+export interface CoverageRow {
+  project: string;
+  resource_type: CoveredResource['resource_type'];
+  resource: string;
+  signals: CoverageSignal[];
+  hint: string;
+}
+
+export interface CoverageResponse {
+  rows: CoverageRow[];
+  generated_at: Timestamp;
+}
+
+export interface RoutingResponse {
+  routing: Record<AlertSeverity, string[]>;
+  defaulted: boolean;
+  updated_at: Timestamp | null;
+  warnings: string[];
+  channels: AlertChannel[];
+}
+
+export interface RoutingUpdate {
+  routing: Record<AlertSeverity, string[]>;
+}
+
+export interface BudgetThreshold {
+  percent: number;
+  basis: 'current_spend' | 'forecasted_spend';
+}
+
+export interface BudgetView {
+  name: string;
+  display_name: string;
+  managed: boolean;
+  amount_kind: 'specified' | 'last_period';
+  amount: number | null;
+  currency: string;
+  projects: string[];
+  service_ids: string[];
+  thresholds: BudgetThreshold[];
+  channel_names: string[];
+  default_iam_recipients: boolean;
+  adopt_shape: 'budget_account' | '';
+  warnings: string[];
+  raw_json: RawJson;
+}
+
+export interface BudgetsResponse {
+  billing_account: string;
+  currency: string;
+  budgets: BudgetView[];
+  generated_at: Timestamp;
+}
+
+export interface BudgetDraft {
+  display_name: string;
+  amount: number;
+  projects: string[];
+  service_ids: string[];
+  thresholds: BudgetThreshold[];
+  severity?: AlertSeverity;
+  channel_override?: string[];
+  default_iam_recipients?: boolean;
+}
+
+export interface SuggestionBasis {
+  method: 'snapshots_avg' | 'monthly_total_setting' | 'none';
+  weeks_used: number;
+  avg_weekly: number;
+  multiplier: number;
+  explanation: string;
+}
+
+export interface BudgetSuggestion {
+  scope: 'account' | 'service';
+  service_id: string;
+  service_name: string;
+  amount: number;
+  basis: SuggestionBasis;
+  draft: BudgetDraft;
+  exists: boolean;
+}
+
+export interface BudgetSuggestionsResponse {
+  currency: string;
+  suggestions: BudgetSuggestion[];
+}
+
+export interface PreviewRequest {
+  kind: AlertKind;
+  action: AlertAction;
+  /** Resource name; '' for create. */
+  target: string;
+  project?: string;
+  template_id?: TemplateId;
+  /** TemplateParams | UptimeDraft | BudgetDraft | SnoozeDraft | ChannelDraft. Exactly one of params/desired. */
+  params?: TemplateParams | UptimeDraft | BudgetDraft | SnoozeDraft | ChannelDraft;
+  desired?: RawJson;
+}
+
+export interface DiffChange {
+  path: string;
+  op: 'add' | 'remove' | 'change';
+  before: unknown;
+  after: unknown;
+}
+
+export interface AlertPreview {
+  preview_token: string;
+  expires_at: Timestamp;
+  kind: AlertKind;
+  action: AlertAction;
+  target: string;
+  current: RawJson | null;
+  desired: RawJson | null;
+  diff: { changes: DiffChange[]; unified: string };
+  gcloud: string;
+  warnings: string[];
+  requires_confirm: boolean;
+}
+
+export interface ApplyRequest {
+  preview_token: string;
+  confirm_delete?: boolean;
+}
+
+export interface ApplyResult {
+  ok: boolean;
+  kind: AlertKind;
+  action: AlertAction;
+  target: string;
+  resource: RawJson | null;
+  change_history_id: number;
+  applied_at: Timestamp;
+  warnings: string[];
+}
+
+export interface AdoptRequest {
+  shape: AdoptShape;
+  target?: string;
+}
+
+export interface AdoptFollowUp {
+  action: 'disable';
+  kind: AlertKind;
+  target: string;
+  note: string;
+}
+
+export interface AdoptPreview {
+  shape: AdoptShape;
+  replaces: string[];
+  previews: AlertPreview[];
+  follow_up: AdoptFollowUp[];
+  notes: string[];
+}
+
+export interface ChangeRecord {
+  id: number;
+  at: Timestamp;
+  actor: string;
+  kind: HistoryKind;
+  action: AlertAction;
+  target: string;
+  before: unknown;
+  after: unknown;
+  preview_hash: string;
+}
+
+export interface ChangeHistoryResponse {
+  entries: ChangeRecord[];
+  limit: number;
 }

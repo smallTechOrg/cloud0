@@ -62,5 +62,7 @@ func registerRoutes(mux *http.ServeMux, deps Deps) {
 	r.handle(http.MethodGet, apiPrefix+"/limits", deps.handleGetLimits)
 	r.handle(http.MethodPut, apiPrefix+"/limits", deps.handlePutLimits)
 	r.handle(http.MethodGet, apiPrefix+"/cost/month", deps.handleCostMonth)
+	deps.registerAlertRoutes(r)
+	deps.registerAttributionRoutes(r)
 	r.finish()
 }

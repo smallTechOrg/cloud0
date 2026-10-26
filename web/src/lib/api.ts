@@ -4,6 +4,28 @@
 // "unreachable" and status 0 so components have one error shape to render.
 
 import type {
+  AdoptPreview,
+  AdoptRequest,
+  AlertHistoryResponse,
+  AlertPreview,
+  AlertsStatus,
+  ApplyRequest,
+  ApplyResult,
+  BudgetSuggestionsResponse,
+  BudgetsResponse,
+  ChangeHistoryResponse,
+  ChannelsResponse,
+  CoverageResponse,
+  HistoryKind,
+  IncidentsResponse,
+  PoliciesResponse,
+  PolicyView,
+  PreviewRequest,
+  RoutingResponse,
+  RoutingUpdate,
+  SnoozesResponse,
+  TemplatesResponse,
+  UptimeChecksResponse,
   Annotation,
   AppConfig,
   BreakdownQuery,
@@ -12,6 +34,7 @@ import type {
   ErrorEnvelope,
   ErrorSamplesResponse,
   ErrorsTableResponse,
+  SampleFocus,
   Health,
   LimitsResponse,
   LimitsUpdate,
@@ -179,9 +202,9 @@ export function getErrorsTable(params: { week?: WeekID; scope?: Scope } = {}): P
   return request<ErrorsTableResponse>(`/errors/table${query(params)}`);
 }
 
-export function getErrorSamples(params: { week?: WeekID; service: string; project?: string; minStatus?: number; limit?: number }): Promise<ErrorSamplesResponse> {
+export function getErrorSamples(params: { week?: WeekID; service: string; project?: string; minStatus?: number; limit?: number; focus?: SampleFocus }): Promise<ErrorSamplesResponse> {
   return request<ErrorSamplesResponse>(
-    `/errors/samples${query({ week: params.week, service: params.service, project: params.project, min_status: params.minStatus, limit: params.limit })}`,
+    `/errors/samples${query({ week: params.week, service: params.service, project: params.project, min_status: params.minStatus, limit: params.limit, focus: params.focus })}`,
   );
 }
 
@@ -207,4 +230,81 @@ export function refreshMonth(month: MonthID): Promise<RefreshResponse> {
 
 export function refreshAll(): Promise<RefreshResponse> {
   return postRefresh({ mode: 'all' });
+}
+
+// ---- Alerts endpoints (spec/api.md → "Alerts additions") ---------------------
+
+export function getAlertsStatus(): Promise<AlertsStatus> {
+  return request<AlertsStatus>('/alerts/status');
+}
+
+export function getChannels(): Promise<ChannelsResponse> {
+  return request<ChannelsResponse>('/alerts/channels');
+}
+
+export function getPolicies(params: { project?: string; managed?: boolean } = {}): Promise<PoliciesResponse> {
+  return request<PoliciesResponse>(`/alerts/policies${query({ project: params.project, managed: params.managed === undefined ? undefined : String(params.managed) })}`);
+}
+
+/** `name` is the full resource name `projects/<p>/alertPolicies/<id>`. */
+export function getPolicy(name: string): Promise<PolicyView> {
+  const [, project, , id] = name.split('/');
+  return request<PolicyView>(`/alerts/policies/${encodeURIComponent(project ?? '')}/${encodeURIComponent(id ?? '')}`);
+}
+
+export function getTemplates(): Promise<TemplatesResponse> {
+  return request<TemplatesResponse>('/alerts/templates');
+}
+
+export function getUptimeChecks(): Promise<UptimeChecksResponse> {
+  return request<UptimeChecksResponse>('/alerts/uptime-checks');
+}
+
+export function getSnoozes(): Promise<SnoozesResponse> {
+  return request<SnoozesResponse>('/alerts/snoozes');
+}
+
+export function getIncidents(state: 'open' | 'closed' | 'all' = 'open', project?: string): Promise<IncidentsResponse> {
+  return request<IncidentsResponse>(`/alerts/incidents${query({ state, project })}`);
+}
+
+export function getAlertHistory(week?: WeekID): Promise<AlertHistoryResponse> {
+  return request<AlertHistoryResponse>(`/alerts/history${query({ week })}`);
+}
+
+export function getCoverage(): Promise<CoverageResponse> {
+  return request<CoverageResponse>('/alerts/coverage');
+}
+
+export function getRouting(): Promise<RoutingResponse> {
+  return request<RoutingResponse>('/alerts/routing');
+}
+
+export function putRouting(body: RoutingUpdate): Promise<RoutingResponse> {
+  return request<RoutingResponse>('/alerts/routing', jsonInit('PUT', body));
+}
+
+/** Read-only: returns the exact JSON, gcloud command and diff; changes nothing in GCP. */
+export function previewAlert(body: PreviewRequest): Promise<AlertPreview> {
+  return request<AlertPreview>('/alerts/preview', jsonInit('POST', body));
+}
+
+export function applyAlert(body: ApplyRequest): Promise<ApplyResult> {
+  return request<ApplyResult>('/alerts/apply', jsonInit('POST', body));
+}
+
+export function adoptPreview(body: AdoptRequest): Promise<AdoptPreview> {
+  return request<AdoptPreview>('/alerts/adopt/preview', jsonInit('POST', body));
+}
+
+export function getBudgets(): Promise<BudgetsResponse> {
+  return request<BudgetsResponse>('/budgets');
+}
+
+export function getBudgetSuggestions(): Promise<BudgetSuggestionsResponse> {
+  return request<BudgetSuggestionsResponse>('/budgets/suggestions');
+}
+
+export function getHistory(params: { kind?: HistoryKind; limit?: number } = {}): Promise<ChangeHistoryResponse> {
+  return request<ChangeHistoryResponse>(`/history${query(params)}`);
 }

@@ -234,6 +234,9 @@ export const metricsTableFixture: MetricsTableResponse = {
   ],
 };
 
+const LOGS_URL = (svc: string): string =>
+  `https://console.cloud.google.com/logs/query;query=resource.type%3D%22cloud_run_revision%22%20AND%20resource.labels.service_name%3D%22${svc}%22;timeRange=2026-10-19T00:00:00.000Z%2F2026-10-26T00:00:00.000Z?project=project-a`;
+
 const errProv = prov('errors_cloudrun', 'metric.type="run.googleapis.com/request_count" AND resource.labels.service_name="svc-a"');
 
 export const errorsTableFixture: ErrorsTableResponse = {
@@ -242,7 +245,10 @@ export const errorsTableFixture: ErrorsTableResponse = {
   generated_at: '2026-10-26T09:00:00Z',
   snapshot: { id: 8, fetched_at: '2026-10-26T09:05:00Z', status_at_fetch: 'settling', run_id: 8, row_count: 4, stale: false },
   rows: [
-    { source: 'cloudrun', project: 'project-a', service: 'svc-a', c2xx: 1000, c3xx: 0, c4xx: 12, c5xx: 1, groups: null, occurrences: null, by_code: { '200': 1000, '404': 11, '401': 1, '502': 1 }, logs_url: 'https://console.cloud.google.com/logs/query;query=resource.type%3D%22cloud_run_revision%22;timeRange=2026-10-19T00:00:00.000Z%2F2026-10-26T00:00:00.000Z?project=project-a', gap: null, hint: null, provenance: errProv },
+    { source: 'cloudrun', project: 'project-a', service: 'svc-a', c2xx: 1000, c3xx: 0, c4xx: 12, c5xx: 3, groups: null, occurrences: null, by_code: { '200': 1000, '404': 11, '401': 1, '502': 3 }, logs_url: LOGS_URL('svc-a'), verdict: 'needs_attention', reasons: ['5xx up 3x vs last week', '3 server errors (502)'], rank: 1, rates: { requests: 1013, rate_5xx: 0.001, rate_client_4xx: 0.001, rate_404: 0.011 }, change: { prev_week: '2026-W42', prev_5xx: 1, prev_client_4xx: 1, prev_by_code: { '200': 900, '401': 1, '502': 1 }, ratio_5xx: 3 }, gap: null, hint: null, provenance: errProv },
+    { source: 'cloudrun', project: 'project-a', service: 'svc-b', c2xx: 500, c3xx: 0, c4xx: 40, c5xx: 0, groups: null, occurrences: null, by_code: { '200': 500, '401': 30, '429': 10 }, logs_url: LOGS_URL('svc-b'), verdict: 'watch', reasons: ['40 client errors (mostly 401)'], rank: 2, rates: { requests: 540, rate_5xx: 0, rate_client_4xx: 0.074, rate_404: 0 }, change: { prev_week: '2026-W42', prev_5xx: 0, prev_client_4xx: 10, prev_by_code: { '401': 10 }, ratio_5xx: null }, gap: null, hint: null, provenance: errProv },
+    { source: 'cloudrun', project: 'project-a', service: 'svc-c', c2xx: 200, c3xx: 0, c4xx: 1400, c5xx: 0, groups: null, occurrences: null, by_code: { '200': 200, '404': 1400 }, logs_url: LOGS_URL('svc-c'), verdict: 'noise', reasons: ['all 404s, typical of scanner traffic'], rank: 3, rates: { requests: 1600, rate_5xx: 0, rate_client_4xx: 0, rate_404: 0.875 }, change: null, gap: null, hint: null, provenance: errProv },
+    { source: 'cloudrun', project: 'project-a', service: 'svc-d', c2xx: 300, c3xx: 0, c4xx: 0, c5xx: 0, groups: null, occurrences: null, by_code: { '200': 300 }, logs_url: LOGS_URL('svc-d'), verdict: 'healthy', reasons: [], rank: 0, rates: { requests: 300, rate_5xx: 0, rate_client_4xx: 0, rate_404: 0 }, change: null, gap: null, hint: null, provenance: errProv },
     { source: 'error_reporting', project: 'project-a', service: 'svc-a', c2xx: null, c3xx: null, c4xx: null, c5xx: null, groups: 3, occurrences: 40, by_code: null, logs_url: null, gap: null, hint: null, provenance: prov('errors_error_reporting', 'groupStats serviceFilter.service=svc-a') },
     {
       source: 'load_balancer',
@@ -277,7 +283,8 @@ export const errorsTableFixture: ErrorsTableResponse = {
       provenance: prov('errors_nginx', 'log entries count'),
     },
   ],
-  totals: { c2xx: 1000, c3xx: 0, c4xx: 12, c5xx: 1, groups: 3, occurrences: 40 },
+  totals: { c2xx: 2000, c3xx: 0, c4xx: 1452, c5xx: 3, groups: 3, occurrences: 40 },
+  summary: { needs_attention: 1, watch: 1, noise: 1, healthy: 1, headline: '1 service needs attention, 1 to watch; 1 is probably scanner noise.' },
 };
 
 export const errorSamplesFixture: ErrorSamplesResponse = {
@@ -300,6 +307,8 @@ export const errorSamplesFixture: ErrorSamplesResponse = {
   ],
   scanner_share_4xx: 0.9,
   heuristic_note: 'scanner_like is a path-pattern heuristic (dotfiles, wp-*, *.php, /cgi-bin, ...), not proof of who sent the request.',
+  focus: 'all',
+  unparsed: 0,
   entries: [
     { timestamp: '2026-10-18T23:59:01Z', status: 404, method: 'GET', path: '/.env', user_agent: 'curl/8.0', remote_ip: '203.0.113.0/24', latency_ms: 4.2, trace: 'projects/project-a/traces/abc', scanner_like: true },
     { timestamp: '2026-10-18T23:58:40Z', status: 502, method: 'POST', path: '/api/me', user_agent: 'Mozilla/5.0', remote_ip: '198.51.100.0/24', latency_ms: 1200, trace: '', scanner_like: false },

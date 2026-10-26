@@ -158,6 +158,20 @@ func TestLive_Phase2Journey(t *testing.T) {
 	}
 	t.Logf("%s: cloudrun 4xx = %v over %d services; total rows %d", week, c4, crRows, len(asList(t, et["rows"])))
 
+	// Triage: every row has a verdict; summary adds up to the number of rows.
+	sm := asMap(t, et["summary"])
+	if got := int(num(sm["needs_attention"]) + num(sm["watch"]) + num(sm["noise"]) + num(sm["healthy"])); got != len(asList(t, et["rows"])) {
+		t.Fatalf("summary %v does not add up to %d rows", sm, len(asList(t, et["rows"])))
+	}
+	for _, r := range asList(t, et["rows"]) {
+		rm := asMap(t, r)
+		v, _ := rm["verdict"].(string)
+		if rm["source"] == "cloudrun" && rm["gap"] == nil && v != "needs_attention" && v != "watch" && v != "noise" && v != "healthy" {
+			t.Fatalf("cloudrun row %v has no verdict", rm["service"])
+		}
+	}
+	t.Logf("%s triage: %v", week, sm)
+
 	// Cloud Run memory reconciliation: Monitoring total vs billing active + idle (within 5%).
 	crTot := totalRowOf(t, tbl, "cloudrun")
 	memTot, memAct, memIdle := cellVal(t, crTot, "service_memory_gib_s"), cellVal(t, crTot, "service_memory_active_gib_s"), cellVal(t, crTot, "service_memory_idle_gib_s")

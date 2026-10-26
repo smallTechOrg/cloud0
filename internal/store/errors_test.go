@@ -111,7 +111,7 @@ VALUES (?, 2026, 43, ?, 'settling', 'cloudrun', 'proj-a', 'svc-a', 7, '{}')`, r.
 		t.Fatalf("0002-shaped insert: %v", err)
 	}
 	applied, err := s.Migrate(ctx)
-	if err != nil || len(applied) != 1 || applied[0].Source != "0003_error_codes.sql" {
+	if err != nil || len(applied) != 3 || applied[0].Source != "0003_error_codes.sql" || applied[1].Source != "0004_alerts.sql" || applied[2].Source != "0005_attribution.sql" {
 		t.Fatalf("Migrate: %+v %v", applied, err)
 	}
 	_, rows, err := LatestErrorRows(ctx, s.DB, week)

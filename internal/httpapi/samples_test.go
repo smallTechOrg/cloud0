@@ -125,7 +125,12 @@ func TestErrorSamples_ValidationAndFailures(t *testing.T) {
 	}
 	fs.err = errors.New("boom")
 	res, body, _ = f.doJSON(t, http.MethodGet, "/api/v1/errors/samples?week=2026-W42&service=s&project=project-a", "")
-	expectError(t, res, body, 502, "samples_failed")
+	e = expectError(t, res, body, 502, "samples_failed")
+	if h, _ := e["hint"].(string); strings.Contains(h, "roles/logging.viewer") || strings.Contains(h, "grant") {
+		t.Fatalf("non-permission error must not carry the role hint: %v", e["hint"])
+	}
+	res, body, _ = f.doJSON(t, http.MethodGet, "/api/v1/errors/samples?week=2026-W42&service=s&project=project-a&focus=bogus", "")
+	expectError(t, res, body, 400, "invalid_request")
 
 	f.deps.Samples = nil
 	f.srv.Close()
@@ -141,4 +146,26 @@ func newServerFor(t *testing.T, deps Deps) *httptest.Server {
 	srv := httptest.NewServer(NewHandler(deps))
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+func TestErrorSamples_FocusAndMalformedURLs(t *testing.T) {
+	fs := &fakeSamples{entries: []errorsrc.RawEntry{
+		sEntry(502, "https://h/%u002f/.env", "198.51.100.7"),
+		sEntry(502, "/a%zz?b=%", "198.51.100.7"),
+	}}
+	f := samplesFixture(t, fs)
+	res, body, raw := f.doJSON(t, http.MethodGet, "/api/v1/errors/samples?week=2026-W42&service=svc-a&project=project-a&focus=server", "")
+	if res.StatusCode != 200 || body["focus"] != "server" || num(body["scanned"]) != 2 || num(body["unparsed"]) != 2 {
+		t.Fatalf("status %d: %s", res.StatusCode, raw)
+	}
+	if !strings.Contains(fs.filter, "httpRequest.status>=500") || strings.Contains(fs.filter, ">=400") {
+		t.Fatalf("filter %q", fs.filter)
+	}
+	if lu, _ := body["logs_url"].(string); !strings.Contains(lu, "status%3E%3D500") {
+		t.Fatalf("logs_url %v", body["logs_url"])
+	}
+	_, body, _ = f.doJSON(t, http.MethodGet, "/api/v1/errors/samples?week=2026-W42&service=svc-a&project=project-a", "")
+	if body["focus"] != "all" {
+		t.Fatalf("default focus = %v", body["focus"])
+	}
 }

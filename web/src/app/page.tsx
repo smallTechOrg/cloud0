@@ -4,7 +4,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnnotationField } from '@/components/AnnotationField';
 import { CellInspector, type InspectorTarget } from '@/components/CellInspector';
 import { CostTable } from '@/components/CostTable';
+import AlertsPanel from '@/components/AlertsPanel';
+import AttributionPanel from '@/components/AttributionPanel';
+import BudgetsPanel from '@/components/BudgetsPanel';
+import CostByDimension from '@/components/CostByDimension';
 import { EmptyState } from '@/components/EmptyState';
+import IncidentsPanel from '@/components/IncidentsPanel';
+import RightsizingPanel from '@/components/RightsizingPanel';
+import TargetsPanel from '@/components/TargetsPanel';
 import ErrorsPanel from '@/components/ErrorsPanel';
 import LimitsPanel from '@/components/LimitsPanel';
 import MetricsPanel from '@/components/MetricsPanel';
@@ -90,6 +97,7 @@ function sumRows(run: Run): number | null {
 export default function Page() {
   // ---- navigation ----------------------------------------------------------
   const [tab, setTab] = useState<TabId>('cost');
+  const [dimension, setDimension] = useState<'service' | 'product' | 'environment'>('service');
   useEffect(() => {
     const apply = () => setTab(tabFromHash(window.location.hash));
     apply();
@@ -451,6 +459,18 @@ export default function Page() {
             <MonthPanel scope={scope} refreshToken={tableVersion} />
           ) : tab === 'limits' && week ? (
             <LimitsPanel week={week} refreshToken={tableVersion} />
+          ) : tab === 'alerts' ? (
+            <AlertsPanel refreshToken={tableVersion} />
+          ) : tab === 'incidents' && week ? (
+            <IncidentsPanel week={week} refreshToken={tableVersion} />
+          ) : tab === 'budgets' ? (
+            <BudgetsPanel refreshToken={tableVersion} />
+          ) : tab === 'attribution' && week ? (
+            <AttributionPanel week={week} scope={scope} refreshToken={tableVersion} />
+          ) : tab === 'targets' ? (
+            <TargetsPanel refreshToken={tableVersion} />
+          ) : tab === 'rightsizing' && week ? (
+            <RightsizingPanel week={week} refreshToken={tableVersion} />
           ) : tab !== 'cost' ? (
             <StubPanel tab={activeTab.label} phase={activeTab.phase} description={activeTab.description} />
           ) : (
@@ -480,14 +500,33 @@ export default function Page() {
                 </div>
               </div>
 
-              {noSnapshots && config ? (
+              <div role="group" aria-label="Cost view" data-testid="cost-dimension-toggle" className={styles.toolbarActions}>
+                {(['service', 'product', 'environment'] as const).map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    className={styles.exportButton}
+                    aria-pressed={dimension === d}
+                    data-testid={`cost-dimension-${d}`}
+                    onClick={() => setDimension(d)}
+                  >
+                    By {d}
+                  </button>
+                ))}
+              </div>
+
+              {dimension !== 'service' && week ? (
+                <CostByDimension week={week} scope={scope} dimension={dimension} refreshToken={tableVersion} />
+              ) : null}
+
+              {dimension === 'service' && noSnapshots && config ? (
                 <EmptyState title="No weeks fetched yet.">
                   Click <strong>Refresh all weeks</strong> to load {config.first_week} → {config.current_week} from BigQuery in one query
                   (≈10–30 s), or <strong>Refresh</strong> for the selected week only.
                 </EmptyState>
               ) : null}
 
-              {connection === 'error' && !config ? (
+              {dimension !== 'service' ? null : connection === 'error' && !config ? (
                 <EmptyState title="Waiting for the cloud0 API." testId="no-config">
                   The week list comes from <code>/api/v1/config</code>; see the banner above for the error and its fix.
                 </EmptyState>
@@ -534,7 +573,7 @@ export default function Page() {
       />
 
       <footer className={styles.footer}>
-        {TABS.filter((t) => t.phase > 1).length} tabs and the two vendor columns are labelled stubs until their phase lands.
+        The Vendors tab and the two vendor columns are labelled stubs until Phase 4 lands.
       </footer>
     </div>
     </CurrencyContext.Provider>

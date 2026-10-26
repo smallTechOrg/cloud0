@@ -32,5 +32,5 @@ Assigns every snapshot row to a product and an environment using an ordered, det
 ## Success Criteria
 - [ ] Unit: a label `env=prod` beats a `staging` token in the name; project default applies when no label and no token; rule priority ordering is stable.
 - [ ] Real data: the seeded rule set attributes ≥ 90 % of the smoke week's net; Σ product nets + unattributed = Total ± 0.005.
-- [ ] `POST /attribution/propose` with the key unset → 200 `{enabled:false, proposals:[]}` and no outbound call (unit test with a fake HTTP transport asserting zero requests).
+- [ ] `POST /attribution/propose` with the key unset → 503 `proposer_not_configured` and no outbound call (unit test with a fake HTTP transport asserting zero requests).
 - [ ] e2e: edit a rule, Save → breakdown updates; unattributed list shows reasons.

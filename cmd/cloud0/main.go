@@ -277,8 +277,18 @@ func serve() int {
 		logger.Error("bigquery.dryrun", slog.String("status", "error"), slog.String("error_code", string(f.Code)), slog.String("message", f.Message), slog.String("fix_hint", f.Hint))
 	}
 
+	var closers []func()
+	defer func() {
+		for _, c := range closers {
+			c()
+		}
+	}()
+	onClose := func(f func()) { closers = append(closers, f) }
+
 	deps := httpapi.Deps{Config: cfg, Store: st, Logger: logger, Version: version, Refresh: runner, Samples: samples,
-		BigQuery: func() *httpapi.BigQueryHealth { h := bqHealth; return &h }}
+		BigQuery:    func() *httpapi.BigQueryHealth { h := bqHealth; return &h },
+		Alerts:      buildAlerts(ctx, cfg, st, logger, onClose),
+		Attribution: buildAttribution(ctx, cfg, logger, onClose)}
 	srv := httpapi.New(deps)
 
 	ln, err := net.Listen("tcp", cfg.Addr())

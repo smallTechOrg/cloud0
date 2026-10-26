@@ -44,24 +44,15 @@ test('dashboard shell loads, connects to the API and renders the Cost tab with n
   expect(headers.slice(-2)).toEqual(['AI Cost (Groq)', 'claude (usage)']);
   await expect(page.getByTestId('cost-table').locator('thead')).toContainText('(stub)');
 
-  // Phase 2 tabs are real (never a stub panel); every other non-Cost tab is a labelled stub.
-  for (const id of ['metrics', 'errors', 'month', 'limits']) {
+  // Every tab except Vendors is a real panel (never a stub); Vendors is the one labelled stub (Phase 4).
+  for (const id of ['metrics', 'errors', 'month', 'limits', 'alerts', 'incidents', 'budgets', 'attribution', 'targets', 'rightsizing']) {
     await page.getByTestId(`nav-tab-${id}`).click();
     await expect(page.getByTestId('active-panel')).toHaveAttribute('data-tab', id);
     await expect(page.getByTestId('stub-panel')).toHaveCount(0);
   }
-  const stubs: Array<[string, string]> = [
-    ['attribution', 'Attribution — Coming in Phase 3'],
-    ['budgets', 'Budgets & Alerts — Coming in Phase 4'],
-    ['vendors', 'Vendors — Coming in Phase 4'],
-    ['rightsizing', 'Rightsizing — Coming in Phase 3'],
-    ['targets', 'Targets — Coming in Phase 3'],
-  ];
-  for (const [id, heading] of stubs) {
-    await page.getByTestId(`nav-tab-${id}`).click();
-    await expect(page.getByTestId('stub-panel')).toContainText(heading);
-    await expect(page.getByTestId('stub-panel')).toContainText('Nothing on this tab is interactive in the current build.');
-  }
+  await page.getByTestId('nav-tab-vendors').click();
+  await expect(page.getByTestId('stub-panel')).toContainText('Vendors — Coming in Phase 4');
+  await expect(page.getByTestId('stub-panel')).toContainText('Nothing on this tab is interactive in the current build.');
   await page.getByTestId('nav-tab-cost').click();
   await expect(page.getByTestId('cost-table')).toBeVisible();
 

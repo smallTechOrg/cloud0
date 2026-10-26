@@ -285,6 +285,7 @@ func (r *Runner) groupRows(window billing.Window, rows []billing.Row) map[isowee
 		out[w] = append(out[w], store.SnapshotRow{
 			ProjectID: b.ProjectID, ServiceID: b.ServiceID, Service: b.Service, SKUID: b.SKUID, SKU: b.SKU,
 			ResourceName: b.ResourceName, ResourceGlobalName: b.ResourceGlobalName,
+			LabelsJSON: b.LabelsJSON, SystemLabelsJSON: b.SystemLabelsJSON,
 			Gross: b.Gross, Credits: b.Credits, Net: b.Net, LineItems: b.LineItems,
 		})
 	}

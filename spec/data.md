@@ -131,6 +131,33 @@ settings (singleton rows)
 - **Retention:** indefinite in Phase 1 — one week of rows is a few thousand; a year of weekly refreshes stays well under 100 MB. A `cloud0 prune --keep-last N` subcommand is a candidate for Phase 4, not before.
 - **Tests:** every test opens its own temp SQLite file, runs `migrate up`, and deletes the file on cleanup — never the dev DB.
 
+### change_history (migration 0004)
+Append-only audit log of every GCP write cloud0 performs through the Alerts feature (policies, uptime checks, channels, budgets, snoozes) and of local alert configuration (`routing`).
+
+| Column | Type | Notes |
+|---|---|---|
+| id | INTEGER PK AUTOINCREMENT | |
+| at | TEXT NOT NULL | RFC3339 UTC |
+| actor | TEXT NOT NULL | `local-user` |
+| kind | TEXT NOT NULL | `policy|uptime_check|budget|snooze|channel|routing` |
+| action | TEXT NOT NULL | `create|update|delete|enable|disable|end` |
+| target | TEXT NOT NULL | resource name (`alerts.routing` for routing) |
+| before_json, after_json | TEXT NULL | redacted JSON (keys matching token/secret/password/webhook_url… become `"[redacted]"`) |
+| preview_hash | TEXT NOT NULL DEFAULT '' | the preview token hash applied |
+
+Indices `(at DESC, id DESC)`, `(kind, id DESC)`. Settings keys (no seed rows): `alerts.routing.critical|error|warning` = comma list of full notification channel names; `budget.suggest.multiplier` (default 1.2), `budget.suggest.weeks` (default 4); `target.monthly_total` (existing) feeds the account budget suggestion.
+
+### snapshot_rows labels (migration 0005)
+`labels_json TEXT NULL`, `system_labels_json TEXT NULL` on `snapshot_rows`: BigQuery `TO_JSON_STRING(labels)` / `TO_JSON_STRING(system_labels)`, a JSON array of `{"key","value"}` (`[]` = no labels). NULL = row stored before migration 0005 (labels unknown; rules fall back to name matching).
+
+### attribution_rules (migration 0005)
+`id` PK, `priority` INTEGER ≥ 0, `match_field` (`label|project|resource_name|sku|service`), `match_op` (`equals|contains|prefix|regex`), `match_key` (label key, else `''`), `match_value`, `product` (`''` = none), `environment` (`''` = none), `shared` 0/1, `enabled` 0/1, `source` (`seed|user|proposed`), `note` NULL, `created_at`, `updated_at`. Index `(priority, id)`. `PUT /attribution/rules` replaces the set atomically (ids preserved for existing rules).
+
+### targets (migration 0005)
+`id` PK, `product` (`*` = account), `month_from` (`YYYY-MM`), `amount` REAL NULL (NULL clears from `month_from`), `created_at`; `UNIQUE (product, month_from)`; history retained. Effective target for month M = the newest row per product with `month_from <= M`.
+
+Phase 3 settings keys (no seed): `attribution.allocate`, `attribution.seed.aliases`, `rightsizing.cpu_pct`, `rightsizing.weeks`, `rightsizing.stale_snapshot_days`, `rightsizing.idle_run_min_net`.
+
 ## Migration 0001 (scope)
 
 Creates all six tables above with their indices and seeds the two `settings` rows. Later phases add migrations `0002_…` onward; nothing in Phase 1 alters 0001 after it is committed.

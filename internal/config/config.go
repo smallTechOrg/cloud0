@@ -27,6 +27,7 @@ const (
 	DefaultSmokeWeek           = "2026-W42"
 	DefaultE2EPort             = 8097
 	DefaultCurrency            = "INR"
+	DefaultLLMModel            = "anthropic/claude-sonnet-4-6"
 )
 
 // TablePattern is the shape a fully-qualified BigQuery table id must have.
@@ -57,6 +58,12 @@ type Config struct {
 	// Currency is the ISO 4217 code of the billing export's money values
 	// (CLOUD0_CURRENCY). Display-only: no conversion is ever applied.
 	Currency string
+
+	// OpenRouterAPIKey (CLOUD0_OPENROUTER_API_KEY) enables the optional,
+	// off-by-default LLM rule proposer. A secret: never printed; Redacted()
+	// reports only set/unset. LLMModel (CLOUD0_LLM_MODEL) is its model slug.
+	OpenRouterAPIKey string
+	LLMModel         string
 
 	// Test-only knobs, read here so every variable has one home.
 	SmokeWeek isoweek.Week
@@ -165,6 +172,12 @@ func Load(getenv func(string) string) (Config, error) {
 		errs = append(errs, &ValidationError{"CLOUD0_CURRENCY", fmt.Sprintf("must be a 3-letter ISO 4217 code like INR or USD, got %q", get("CLOUD0_CURRENCY"))})
 	}
 
+	cfg.OpenRouterAPIKey = get("CLOUD0_OPENROUTER_API_KEY")
+	cfg.LLMModel = get("CLOUD0_LLM_MODEL")
+	if cfg.LLMModel == "" {
+		cfg.LLMModel = DefaultLLMModel
+	}
+
 	cfg.SmokeWeek, err = loadWeek(get, "CLOUD0_SMOKE_WEEK", DefaultSmokeWeek)
 	if err != nil {
 		errs = append(errs, err)
@@ -190,7 +203,13 @@ func (c Config) Redacted() map[string]any {
 	if c.CredentialsPath != "" {
 		creds = "set"
 	}
+	orKey := "unset"
+	if c.OpenRouterAPIKey != "" {
+		orKey = "set"
+	}
 	return map[string]any{
+		"openrouter_api_key":    orKey,
+		"llm_model":             c.LLMModel,
 		"credentials":           creds,
 		"projects":              c.Projects,
 		"billing_account_set":   c.BillingAccountID != "",

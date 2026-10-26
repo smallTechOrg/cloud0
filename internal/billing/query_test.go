@@ -25,6 +25,8 @@ const specSQL = "SELECT\n" +
 	"  sku.description       AS sku,\n" +
 	"  resource.name         AS resource_name,\n" +
 	"  resource.global_name  AS resource_global_name,\n" +
+	"  TO_JSON_STRING(labels)        AS labels_json,\n" +
+	"  TO_JSON_STRING(system_labels) AS system_labels_json,\n" +
 	"  SUM(cost)             AS gross,\n" +
 	"  SUM((SELECT IFNULL(SUM(c.amount), 0) FROM UNNEST(credits) AS c)) AS credits,\n" +
 	"  COUNT(*)              AS line_items\n" +
@@ -32,7 +34,7 @@ const specSQL = "SELECT\n" +
 	"WHERE DATE(_PARTITIONTIME) BETWEEN @part_start AND @part_end\n" +
 	"  AND usage_start_time >= @usage_start\n" +
 	"  AND usage_start_time <  @usage_end\n" +
-	"GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9"
+	"GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11"
 
 // placeholderTable is a syntactically valid project.dataset.table that is
 // not a real identifier (the repo is public).

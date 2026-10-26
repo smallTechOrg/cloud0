@@ -103,10 +103,15 @@ type Row struct {
 	SKU                string
 	ResourceName       *string
 	ResourceGlobalName *string
-	Gross              float64
-	Credits            float64
-	Net                float64
-	LineItems          int64
+	// LabelsJSON / SystemLabelsJSON are TO_JSON_STRING(labels) /
+	// TO_JSON_STRING(system_labels), e.g. [{"key":"env","value":"prod"}];
+	// nil only when the export returned NULL.
+	LabelsJSON       *string
+	SystemLabelsJSON *string
+	Gross            float64
+	Credits          float64
+	Net              float64
+	LineItems        int64
 }
 
 // Week is the ISO week the row belongs to.
@@ -246,6 +251,8 @@ type bqRow struct {
 	SKU                bigquery.NullString  `bigquery:"sku"`
 	ResourceName       bigquery.NullString  `bigquery:"resource_name"`
 	ResourceGlobalName bigquery.NullString  `bigquery:"resource_global_name"`
+	LabelsJSON         bigquery.NullString  `bigquery:"labels_json"`
+	SystemLabelsJSON   bigquery.NullString  `bigquery:"system_labels_json"`
 	Gross              bigquery.NullFloat64 `bigquery:"gross"`
 	Credits            bigquery.NullFloat64 `bigquery:"credits"`
 	LineItems          bigquery.NullInt64   `bigquery:"line_items"`
@@ -278,6 +285,8 @@ func (r bqRow) toRow() Row {
 		SKU:                r.SKU.StringVal,
 		ResourceName:       nullable(r.ResourceName),
 		ResourceGlobalName: nullable(r.ResourceGlobalName),
+		LabelsJSON:         nullable(r.LabelsJSON),
+		SystemLabelsJSON:   nullable(r.SystemLabelsJSON),
 		Gross:              gross,
 		Credits:            credits,
 		Net:                gross + credits,
@@ -317,7 +326,13 @@ func rowLess(a, b Row) bool {
 	if an, bn := deref(a.ResourceName), deref(b.ResourceName); an != bn {
 		return an < bn
 	}
-	return deref(a.ResourceGlobalName) < deref(b.ResourceGlobalName)
+	if ag, bg := deref(a.ResourceGlobalName), deref(b.ResourceGlobalName); ag != bg {
+		return ag < bg
+	}
+	if al, bl := deref(a.LabelsJSON), deref(b.LabelsJSON); al != bl {
+		return al < bl
+	}
+	return deref(a.SystemLabelsJSON) < deref(b.SystemLabelsJSON)
 }
 
 func deref(s *string) string {

@@ -1,0 +1,42 @@
+{
+  "combiner": "OR",
+  "conditions": [
+    {
+      "conditionThreshold": {
+        "aggregations": [
+          {
+            "alignmentPeriod": "60s",
+            "crossSeriesReducer": "REDUCE_NONE",
+            "groupByFields": [
+              "resource.label.instance_id"
+            ],
+            "perSeriesAligner": "ALIGN_MEAN"
+          }
+        ],
+        "comparison": "COMPARISON_GT",
+        "duration": "900s",
+        "filter": "metric.type=\"agent.googleapis.com/memory/percent_used\" AND resource.type=\"gce_instance\" AND metric.labels.state=\"used\"",
+        "thresholdValue": 85,
+        "trigger": {
+          "count": 1
+        }
+      },
+      "displayName": "VM memory high above 85%"
+    }
+  ],
+  "displayName": "cloud0: VM memory high",
+  "documentation": {
+    "content": "**VM memory high** on VM `${resource.label.instance_id}` (project `${project}`): Memory above 85% for 900 s.\n\nWhat to check first:\n\n1. SSH in and run `free -m` and `ps aux --sort=-%mem | head`.\n2. Look for a leaking process or a recent deploy; restart it if safe.\n3. Resize the VM or add swap if usage is legitimate.\n\nNote: needs the Ops Agent; VMs without it are not covered.\n",
+    "mimeType": "text/markdown",
+    "subject": "VM memory high: ${resource.label.instance_id}"
+  },
+  "enabled": true,
+  "notificationChannels": [
+    "projects/proj-a/notificationChannels/1"
+  ],
+  "severity": "ERROR",
+  "userLabels": {
+    "cloud0-template": "vm_memory_high",
+    "managed-by": "cloud0"
+  }
+}

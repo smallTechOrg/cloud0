@@ -23,26 +23,52 @@ test('Errors tab explains itself: how counted, exact codes, sampled paths, Logs 
   await expect(errors).toBeVisible({ timeout: 30_000 });
   await expect(errors.getByTestId('errors-how-counted')).toContainText('internet scanners');
 
-  // Expand the first Cloud Run service that has 4xx responses.
-  const row = errors.locator('[data-testid="errors-cloudrun-row"]:has(td[data-emphasis="4xx"])').first();
-  await expect(row).toBeVisible();
-  await row.getByTestId('errors-expand').click();
-  const detail = errors.getByTestId('errors-detail-row').first();
-  await expect(detail).toBeVisible();
-  const chips = detail.getByTestId('errors-code-chip');
-  expect(await chips.count()).toBeGreaterThanOrEqual(1);
-  await expect(chips.first()).toHaveText(/^[45]\d\d ×[\d,]+$/);
+  // Triage card: "What to look at" with at least one verdict badge (text label, not colour only).
+  const triage = errors.getByTestId('errors-look-at');
+  await expect(triage).toBeVisible();
+  await expect(triage).toContainText('What to look at');
+  const badges = errors.getByTestId('errors-triage').getByTestId('verdict-badge');
+  expect(await badges.count()).toBeGreaterThanOrEqual(1);
+  await expect(badges.first()).toHaveText(/Needs attention|Watch|Probably noise|Healthy/);
+  await expect(errors.getByTestId('errors-all-sources')).toBeVisible();
 
-  // Explain & sample: top paths from real Cloud Logging.
-  await detail.getByTestId('errors-sample-button').click();
-  await expect(detail.getByTestId('errors-sample-result')).toBeVisible({ timeout: 90_000 });
-  expect(await detail.getByTestId('errors-sample-path-row').count()).toBeGreaterThanOrEqual(1);
-  expect(await detail.getByTestId('errors-sample-entry-row').count()).toBeGreaterThanOrEqual(1);
-  await expect(detail.getByTestId('errors-sample-result')).toContainText('most recent entries');
+  // Logs Explorer links: new tab, safe rel, correct target (never clicked).
+  const logLinks = errors.getByTestId('errors-logs-link');
+  expect(await logLinks.count()).toBeGreaterThanOrEqual(1);
+  for (const link of await logLinks.all()) {
+    await expect(link).toHaveAttribute('href', /console\.cloud\.google\.com\/logs\/query/);
+    await expect(link).toHaveAttribute('target', '_blank');
+    await expect(link).toHaveAttribute('rel', /noopener/);
+  }
 
-  // Logs Explorer link: new tab, safe rel, correct target (not clicked).
-  const link = detail.getByTestId('errors-logs-link');
-  await expect(link).toHaveAttribute('href', /console\.cloud\.google\.com\/logs\/query/);
-  await expect(link).toHaveAttribute('target', '_blank');
-  await expect(link).toHaveAttribute('rel', /noopener/);
+  // On-demand sample from the first actionable item (or the noise section when nothing needs attention).
+  let button = triage.getByTestId('triage-sample-button').first();
+  if ((await triage.getByTestId('triage-sample-button').count()) === 0) {
+    await errors.getByTestId('errors-noise').locator('summary').click();
+    button = errors.getByTestId('errors-noise').getByTestId('triage-sample-button').first();
+  }
+  await expect(button).toBeVisible();
+  await expect(button).toHaveText(/Show failing requests|Check paths/);
+  await button.click();
+  const item = button.locator('xpath=ancestor::li[@data-testid="triage-item"]');
+  const outcome = item.locator(
+    '[data-testid="errors-sample-result"], [data-testid="errors-sample-empty"], [data-testid="errors-sample-retention"], [data-testid="errors-sample-error"]',
+  );
+  await expect(outcome.first()).toBeVisible({ timeout: 90_000 });
+  // Content or a clear empty state; never an error banner or a failed sample.
+  await expect(item.getByTestId('errors-sample-error')).toHaveCount(0);
+  await expect(page.getByTestId('error-banner')).toHaveCount(0);
+  const result = item.getByTestId('errors-sample-result');
+  if ((await result.count()) > 0) {
+    expect(await result.getByTestId('errors-sample-entry-row').count()).toBeGreaterThanOrEqual(1);
+  }
+
+  // Details: three titled sections.
+  await item.getByTestId('triage-details-button').click();
+  const sections = item.getByTestId('errors-detail-section');
+  await expect(sections).toHaveCount(3);
+  await expect(item).toContainText('Server errors (5xx)');
+  await expect(item).toContainText('Client errors that may be real');
+  await expect(item).toContainText('404s: scanner-like vs possible broken links');
+  await expect(page.getByTestId('error-banner')).toHaveCount(0);
 });

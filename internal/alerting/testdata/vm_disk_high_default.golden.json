@@ -1,0 +1,75 @@
+{
+  "combiner": "OR",
+  "conditions": [
+    {
+      "conditionThreshold": {
+        "aggregations": [
+          {
+            "alignmentPeriod": "60s",
+            "crossSeriesReducer": "REDUCE_NONE",
+            "groupByFields": [
+              "resource.label.instance_id"
+            ],
+            "perSeriesAligner": "ALIGN_MEAN"
+          }
+        ],
+        "comparison": "COMPARISON_GT",
+        "duration": "300s",
+        "filter": "metric.type=\"agent.googleapis.com/disk/percent_used\" AND resource.type=\"gce_instance\" AND metric.labels.state=\"used\"",
+        "thresholdValue": 85,
+        "trigger": {
+          "count": 1
+        }
+      },
+      "displayName": "VM disk high above 85%"
+    },
+    {
+      "conditionThreshold": {
+        "aggregations": [
+          {
+            "alignmentPeriod": "60s",
+            "crossSeriesReducer": "REDUCE_SUM",
+            "groupByFields": [
+              "resource.label.instance_id"
+            ],
+            "perSeriesAligner": "ALIGN_MEAN"
+          }
+        ],
+        "comparison": "COMPARISON_GT",
+        "denominatorAggregations": [
+          {
+            "alignmentPeriod": "60s",
+            "crossSeriesReducer": "REDUCE_SUM",
+            "groupByFields": [
+              "resource.label.instance_id"
+            ],
+            "perSeriesAligner": "ALIGN_MEAN"
+          }
+        ],
+        "denominatorFilter": "metric.type=\"agent.googleapis.com/disk/bytes_used\" AND resource.type=\"gce_instance\" AND metric.labels.state!=\"\"",
+        "duration": "300s",
+        "filter": "metric.type=\"agent.googleapis.com/disk/bytes_used\" AND resource.type=\"gce_instance\" AND metric.labels.state=\"used\"",
+        "thresholdValue": 0.85,
+        "trigger": {
+          "count": 1
+        }
+      },
+      "displayName": "VM disk high: bytes used ratio above 85%"
+    }
+  ],
+  "displayName": "cloud0: VM disk high",
+  "documentation": {
+    "content": "**VM disk high** on VM `${resource.label.instance_id}` (project `${project}`): Disk above 85% for 300 s.\n\nWhat to check first:\n\n1. SSH in and run `df -h` then `du -xh / --max-depth=2 | sort -h | tail`.\n2. Look for logs, docker images/volumes, or temp files; clean up or grow the disk.\n\nLimitation: the second condition (bytes used / bytes of all states) is summed across every device of the VM (it cannot be restricted to the root device), so a small full volume can be diluted by large empty ones; the first condition (percent used) is evaluated per device.\n",
+    "mimeType": "text/markdown",
+    "subject": "VM disk high: ${resource.label.instance_id}"
+  },
+  "enabled": true,
+  "notificationChannels": [
+    "projects/proj-a/notificationChannels/1"
+  ],
+  "severity": "ERROR",
+  "userLabels": {
+    "cloud0-template": "vm_disk_high",
+    "managed-by": "cloud0"
+  }
+}

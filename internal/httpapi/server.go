@@ -35,6 +35,10 @@ type Deps struct {
 	// Samples reads Cloud Logging for GET /errors/samples; nil answers
 	// 503 samples_unavailable.
 	Samples errorsrc.LogEntrySource
+	// Alerts wires the /alerts and /budgets endpoints; nil answers 503 alerts_not_configured.
+	Alerts *AlertsDeps
+	// Attribution wires the Phase 3 endpoints; nil answers 503 attribution_not_configured.
+	Attribution *AttributionDeps
 }
 
 func (d Deps) now() time.Time {

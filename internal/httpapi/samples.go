@@ -60,6 +60,13 @@ func (d Deps) handleErrorSamples(w http.ResponseWriter, r *http.Request) *APIErr
 		}
 		limit = n
 	}
+	focus := q.Get("focus")
+	if !errorsrc.ValidFocus(focus) {
+		return ErrInvalidRequest("focus must be one of server, client, notfound, all.")
+	}
+	if focus == "" {
+		focus = errorsrc.FocusAll
+	}
 	if d.Samples == nil {
 		return (&APIError{Status: http.StatusServiceUnavailable, Code: "samples_unavailable",
 			Message: "The Cloud Logging client could not be built, so log samples are unavailable."}).
@@ -67,7 +74,7 @@ func (d Deps) handleErrorSamples(w http.ResponseWriter, r *http.Request) *APIErr
 	}
 	win := gcpsource.Window{Start: week.Start(), End: week.End()}
 	res, err := errorsrc.SampleErrors(r.Context(), d.Samples, errorsrc.SampleParams{
-		Project: project, Service: service, Window: win, MinStatus: minStatus, Limit: limit, Now: now})
+		Project: project, Service: service, Window: win, MinStatus: minStatus, Focus: focus, Limit: limit, Now: now})
 	if err != nil {
 		status, msg, hint := gcpsource.Classify(err, errorsrc.LoggingRoleHint, errorsrc.LoggingAPI)
 		e := &APIError{Status: http.StatusBadGateway, Code: "samples_failed", Message: "Reading Cloud Logging failed: " + msg}
@@ -78,13 +85,13 @@ func (d Deps) handleErrorSamples(w http.ResponseWriter, r *http.Request) *APIErr
 			e.Status, e.Code = http.StatusServiceUnavailable, "api_disabled"
 		case gcpsource.StatusQuota:
 			e.Status, e.Code = http.StatusTooManyRequests, "quota"
-		}
-		if hint == "" {
-			hint = "Check the roles/logging.viewer grant and retry."
+		default:
+			// Not a permission problem: say what failed, never suggest a role.
+			hint = "This is not a permissions problem. Retry; if it keeps failing, check the server log (request id in the response header)."
 		}
 		return e.WithHint(hint)
 	}
 	writeJSON(w, http.StatusOK, samplesResponse{Week: week.String(), Project: project, Service: service, MinStatus: minStatus,
-		GeneratedAt: now.Truncate(time.Second), LogsURL: errorsrc.LogsExplorerURL(project, service, win), SampleResult: res})
+		GeneratedAt: now.Truncate(time.Second), LogsURL: errorsrc.FocusLogsExplorerURL(project, service, focus, minStatus, win), SampleResult: res})
 	return nil
 }

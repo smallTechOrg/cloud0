@@ -10,8 +10,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
-	"cloud.google.com/go/logging/logadmin"
+	logging "cloud.google.com/go/logging/apiv2"
+	"cloud.google.com/go/logging/apiv2/loggingpb"
 	"google.golang.org/api/iterator"
 
 	"github.com/smallTechOrg/cloud0/internal/gcpsource"
@@ -40,10 +42,66 @@ func RunRequestsFilter(service string, minStatus int) string {
 	return fmt.Sprintf(`resource.type="cloud_run_revision" AND resource.labels.service_name=%q AND httpRequest.status>=%d`, service, minStatus)
 }
 
+// Focus values of GET /errors/samples: which class of failing requests to read.
+const (
+	FocusAll      = "all"
+	FocusServer   = "server"   // status >= 500
+	FocusClient   = "client"   // 400, 401, 403, 405, 422, 429
+	FocusNotFound = "notfound" // 404
+)
+
+// ClientErrorCodes are the 4xx codes that may be real client/application problems (404 is separate).
+var ClientErrorCodes = []int{400, 401, 403, 405, 422, 429}
+
+// ValidFocus reports whether f is a known focus ("" counts as all).
+func ValidFocus(f string) bool {
+	switch f {
+	case "", FocusAll, FocusServer, FocusClient, FocusNotFound:
+		return true
+	}
+	return false
+}
+
+// statusClause is the server-side Logging filter clause for a focus; minStatus
+// applies only to FocusAll.
+func statusClause(focus string, minStatus int) string {
+	switch focus {
+	case FocusServer:
+		return "httpRequest.status>=500"
+	case FocusNotFound:
+		return "httpRequest.status=404"
+	case FocusClient:
+		parts := make([]string, len(ClientErrorCodes))
+		for i, c := range ClientErrorCodes {
+			parts[i] = fmt.Sprintf("httpRequest.status=%d", c)
+		}
+		return "(" + strings.Join(parts, " OR ") + ")"
+	}
+	return fmt.Sprintf("httpRequest.status>=%d", minStatus)
+}
+
+// FocusFilter is the Logs Explorer filter (no time bounds) for one service and focus.
+func FocusFilter(service, focus string, minStatus int) string {
+	return fmt.Sprintf(`resource.type="cloud_run_revision" AND resource.labels.service_name=%q AND `, service) + statusClause(focus, minStatus)
+}
+
 // SamplesFilter is RunRequestsFilter bounded to the window w.
 func SamplesFilter(service string, minStatus int, w gcpsource.Window) string {
-	return RunRequestsFilter(service, minStatus) + fmt.Sprintf(` AND timestamp>="%s" AND timestamp<"%s"`,
+	return FocusSamplesFilter(service, FocusAll, minStatus, w)
+}
+
+// FocusSamplesFilter is FocusFilter bounded to the window w.
+func FocusSamplesFilter(service, focus string, minStatus int, w gcpsource.Window) string {
+	return FocusFilter(service, focus, minStatus) + fmt.Sprintf(` AND timestamp>="%s" AND timestamp<"%s"`,
 		w.Start.UTC().Format(time.RFC3339), w.End.UTC().Format(time.RFC3339))
+}
+
+// FocusLogsExplorerURL is LogsExplorerURL restricted to a focus.
+func FocusLogsExplorerURL(project, service, focus string, minStatus int, w gcpsource.Window) string {
+	enc := func(s string) string { return strings.ReplaceAll(url.QueryEscape(s), "+", "%20") }
+	return "https://console.cloud.google.com/logs/query;query=" + enc(FocusFilter(service, focus, minStatus)) +
+		";timeRange=" + w.Start.UTC().Format("2006-01-02T15:04:05.000Z") + "%2F" + w.End.UTC().Format("2006-01-02T15:04:05.000Z") +
+		"?project=" + url.QueryEscape(project)
 }
 
 // LogsExplorerURL is a Google Cloud Logs Explorer deep link for the failing
@@ -82,8 +140,9 @@ type SampleParams struct {
 	Project   string
 	Service   string
 	Window    gcpsource.Window
-	MinStatus int // default 400
-	Limit     int // entries returned; default DefaultSampleLimit
+	MinStatus int    // default 400; used only when Focus is all
+	Focus     string // server | client | notfound | all (default)
+	Limit     int    // entries returned; default DefaultSampleLimit
 	Now       time.Time
 }
 
@@ -118,6 +177,10 @@ type SampleResult struct {
 	StatusCounts   map[string]int `json:"status_counts"`
 	TopPaths       []PathStat     `json:"top_paths"`
 	Entries        []SampleEntry  `json:"entries"`
+	// Focus echoes the requested focus (all when unset).
+	Focus string `json:"focus"`
+	// Unparsed counts scanned entries whose request URL was malformed (kept, with a best-effort path).
+	Unparsed int `json:"unparsed"`
 	// ScannerShare4xx is the fraction (0..1) of scanned 4xx entries whose path
 	// looks like scanner traffic; nil when the sample has no 4xx entries.
 	ScannerShare4xx *float64 `json:"scanner_share_4xx"`
@@ -137,7 +200,10 @@ func OutOfRetention(w gcpsource.Window, now time.Time) bool {
 // retention horizon returns OutOfRetention with no error and no query.
 func SampleErrors(ctx context.Context, src LogEntrySource, p SampleParams) (SampleResult, error) {
 	res := SampleResult{Sampled: true, Note: SampleNote, Heuristic: HeuristicNote,
-		StatusCounts: map[string]int{}, TopPaths: []PathStat{}, Entries: []SampleEntry{}}
+		Focus: p.Focus, StatusCounts: map[string]int{}, TopPaths: []PathStat{}, Entries: []SampleEntry{}}
+	if res.Focus == "" {
+		res.Focus = FocusAll
+	}
 	if p.MinStatus <= 0 {
 		p.MinStatus = 400
 	}
@@ -152,7 +218,7 @@ func SampleErrors(ctx context.Context, src LogEntrySource, p SampleParams) (Samp
 		res.RetentionNote = RetentionNote
 		return res, nil
 	}
-	it, err := src.Entries(ctx, p.Project, SamplesFilter(p.Service, p.MinStatus, p.Window))
+	it, err := src.Entries(ctx, p.Project, FocusSamplesFilter(p.Service, res.Focus, p.MinStatus, p.Window))
 	if err != nil {
 		return res, fmt.Errorf("errorsrc: open log entries: %w", err)
 	}
@@ -171,7 +237,10 @@ func SampleErrors(ctx context.Context, src LogEntrySource, p SampleParams) (Samp
 			return res, fmt.Errorf("errorsrc: read log entries: %w", err)
 		}
 		res.Scanned++
-		path := StripQuery(e.URL)
+		path, ok := ParsePath(e.URL)
+		if !ok {
+			res.Unparsed++
+		}
 		scan := LooksLikeScanner(path)
 		res.StatusCounts[strconv.Itoa(e.Status)]++
 		counts[key{path, e.Status}]++
@@ -213,21 +282,59 @@ func SampleErrors(ctx context.Context, src LogEntrySource, p SampleParams) (Samp
 	return res, nil
 }
 
+// MaxPathLen caps a returned request path.
+const MaxPathLen = 200
+
 // StripQuery returns the path of a logged request URL without scheme, host or query.
 func StripQuery(raw string) string {
+	p, _ := ParsePath(raw)
+	return p
+}
+
+// ParsePath extracts the request path from a logged URL, leniently: it never
+// fails. ok is false when the URL was malformed (url.Parse failed or the path
+// is not valid percent-encoding); the path is then a best effort and keeps the
+// raw text where it cannot be decoded. Paths are truncated to MaxPathLen.
+func ParsePath(raw string) (path string, ok bool) {
+	if raw == "" {
+		return "/", true
+	}
 	if u, err := url.Parse(raw); err == nil && (u.Path != "" || u.Host != "") {
 		if u.Path == "" {
-			return "/"
+			return "/", true
 		}
-		return u.Path
+		return truncatePath(u.Path), true
 	}
-	if i := strings.IndexAny(raw, "?#"); i >= 0 {
-		raw = raw[:i]
+	rest := raw
+	if i := strings.Index(rest, "://"); i >= 0 && !strings.ContainsAny(rest[:i], "/?#") {
+		rest = rest[i+3:]
+		if j := strings.IndexAny(rest, "/?#"); j >= 0 {
+			rest = rest[j:]
+		} else {
+			rest = ""
+		}
 	}
-	if raw == "" {
-		return "/"
+	if i := strings.IndexAny(rest, "?#"); i >= 0 {
+		rest = rest[:i]
 	}
-	return raw
+	if rest == "" {
+		return "/", false
+	}
+	if dec, err := url.PathUnescape(rest); err == nil {
+		return truncatePath(dec), false
+	}
+	return truncatePath(rest), false
+}
+
+func truncatePath(p string) string {
+	if len(p) <= MaxPathLen {
+		return p
+	}
+	p = p[:MaxPathLen]
+	for !utf8.ValidString(p) && len(p) > 0 {
+		p = p[:len(p)-1]
+	}
+	return p
 }
 
 // TruncateIP reduces a client IP to its network: IPv4 -> /24, IPv6 -> /48.
@@ -281,43 +388,36 @@ func LooksLikeScanner(path string) bool {
 	return false
 }
 
-// SampleReader is the real LogEntrySource (one logadmin client per project).
-type SampleReader struct{ clients map[string]*logadmin.Client }
+// SampleReader is the real LogEntrySource. It uses the raw Logging API
+// (ListLogEntries) so httpRequest.requestUrl stays a plain string: the
+// logadmin wrapper runs net/url.Parse on it and fails the whole read on one
+// malformed scanner URL.
+type SampleReader struct{ client *logging.Client }
 
-// NewSampleReader builds logadmin clients with Application Default Credentials.
+// NewSampleReader builds a Logging client with Application Default Credentials.
+// The projects argument is kept for call compatibility; projects are chosen per call.
 func NewSampleReader(ctx context.Context, projects []string) (*SampleReader, func() error, error) {
-	g := &SampleReader{clients: map[string]*logadmin.Client{}}
-	closeAll := func() error {
-		var errs []error
-		for _, c := range g.clients {
-			errs = append(errs, c.Close())
-		}
-		return errors.Join(errs...)
+	c, err := logging.NewClient(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("errorsrc: logging client: %w", err)
 	}
-	for _, p := range projects {
-		p = strings.TrimSpace(p)
-		if p == "" || g.clients[p] != nil {
-			continue
-		}
-		c, err := logadmin.NewClient(ctx, p)
-		if err != nil {
-			_ = closeAll()
-			return nil, nil, fmt.Errorf("errorsrc: logadmin client for %s: %w", p, err)
-		}
-		g.clients[p] = c
-	}
-	return g, closeAll, nil
+	return &SampleReader{client: c}, c.Close, nil
 }
 
-type gcpEntryIter struct{ it *logadmin.EntryIterator }
+type gcpEntryIter struct{ it *logging.LogEntryIterator }
 
 // Entries opens a newest-first iterator.
 func (g *SampleReader) Entries(ctx context.Context, project, filter string) (EntryIterator, error) {
-	c := g.clients[project]
-	if c == nil {
-		return nil, fmt.Errorf("errorsrc: no logadmin client for project %q", project)
+	if strings.TrimSpace(project) == "" {
+		return nil, errors.New("errorsrc: empty project for log entries")
 	}
-	return gcpEntryIter{it: c.Entries(ctx, logadmin.Filter(filter), logadmin.NewestFirst(), logadmin.PageSize(int32(MaxScanned)))}, nil
+	it := g.client.ListLogEntries(ctx, &loggingpb.ListLogEntriesRequest{
+		ResourceNames: []string{"projects/" + project},
+		Filter:        filter,
+		OrderBy:       "timestamp desc",
+		PageSize:      int32(MaxScanned),
+	})
+	return gcpEntryIter{it: it}, nil
 }
 
 func (g gcpEntryIter) Next() (RawEntry, error) {
@@ -325,14 +425,15 @@ func (g gcpEntryIter) Next() (RawEntry, error) {
 	if err != nil {
 		return RawEntry{}, err
 	}
-	out := RawEntry{Timestamp: e.Timestamp, Trace: e.Trace}
-	if h := e.HTTPRequest; h != nil {
-		out.Status, out.RemoteIP, out.Latency = h.Status, h.RemoteIP, h.Latency
-		if h.Request != nil {
-			out.Method, out.UserAgent = h.Request.Method, h.Request.UserAgent()
-			if h.Request.URL != nil {
-				out.URL = h.Request.URL.String()
-			}
+	out := RawEntry{Trace: e.GetTrace()}
+	if ts := e.GetTimestamp(); ts != nil {
+		out.Timestamp = ts.AsTime()
+	}
+	if h := e.GetHttpRequest(); h != nil {
+		out.Status, out.RemoteIP = int(h.GetStatus()), h.GetRemoteIp()
+		out.Method, out.UserAgent, out.URL = h.GetRequestMethod(), h.GetUserAgent(), h.GetRequestUrl()
+		if l := h.GetLatency(); l != nil {
+			out.Latency = l.AsDuration()
 		}
 	}
 	return out, nil

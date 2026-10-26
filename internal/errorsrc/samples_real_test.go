@@ -65,6 +65,7 @@ func TestSampleErrors_RealAPI_BusiestServiceW42(t *testing.T) {
 	if sr.OutOfRetention {
 		t.Fatalf("W42 should still be inside the 30-day retention: %+v", sr)
 	}
+	t.Logf("unparsed=%d", sr.Unparsed)
 	t.Logf("busiest service: 4xx+5xx=%d scanned=%d top_paths=%d scanner_share=%v entries=%d", bestN, sr.Scanned, len(sr.TopPaths), sr.ScannerShare4xx, len(sr.Entries))
 	if sr.Scanned == 0 || len(sr.TopPaths) == 0 {
 		t.Fatalf("scanned=%d top_paths=%d, want both > 0", sr.Scanned, len(sr.TopPaths))

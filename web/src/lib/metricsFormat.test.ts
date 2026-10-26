@@ -125,10 +125,11 @@ describe('errors CSV', () => {
   it('emits all sources, gaps with hints, and a totals row', () => {
     const lines = buildErrorsCsv(errorsTableFixture).trimEnd().split('\r\n');
     expect(lines[0]).toBe('Source,Project,Service,2xx,3xx,4xx,5xx,Groups,Occurrences,Gap,Fix hint');
-    expect(lines[1]).toBe('Cloud Run,project-a,svc-a,1000,0,12,1,,,,');
-    expect(lines[2]).toBe('Error Reporting,project-a,svc-a,,,,,3,40,,');
-    expect(lines[3]).toContain('Load balancer,project-a,,,,,,,,logging disabled,');
-    expect(lines[3]).toContain('backend service');
-    expect(lines[lines.length - 1]).toBe('Total,,,1000,0,12,1,3,40,,');
+    expect(lines[1]).toBe('Cloud Run,project-a,svc-a,1000,0,12,3,,,,');
+    expect(lines).toContain('Error Reporting,project-a,svc-a,,,,,3,40,,');
+    const lb = lines.find((l) => l.startsWith('Load balancer'));
+    expect(lb).toContain('Load balancer,project-a,,,,,,,,logging disabled,');
+    expect(lb).toContain('backend service');
+    expect(lines[lines.length - 1]).toBe('Total,,,2000,0,1452,3,3,40,,');
   });
 });

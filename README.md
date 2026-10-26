@@ -58,6 +58,9 @@ cp .env.example .env
 | `CLOUD0_PARTITION_MARGIN_DAYS` | no | `1` | Days added on each side of the `_PARTITIONTIME` filter. |
 | `CLOUD0_LOG_LEVEL` | no | `info` | `debug` / `info` / `warn` / `error`. |
 | `CLOUD0_CURRENCY` | no | `INR` | 3-letter ISO 4217 code of the billing export's `currency` column. Display only: used to format every money value; no conversion is applied. |
+| `CLOUD0_OPENROUTER_API_KEY` | no | unset | Enables the optional LLM rule proposer (`POST /api/v1/attribution/propose`). Unset = disabled (503, no outbound call). Proposals are never applied automatically; prompts carry resource names/labels only, no amounts. Secret: keep in `.env`. |
+| `CLOUD0_LLM_MODEL` | no | `anthropic/claude-sonnet-4-6` | OpenRouter model slug used by the rule proposer. |
+| `CLOUD0_ALERTS_CREDENTIALS` | no | unset | Absolute path to the **alerts-writer** service-account key (a second, separate account; see section 9). Unset = Alerts, Incidents and Budgets are read-only: previews work, Apply and budget reads answer `503 alerts_not_configured`. Secret: keep the key outside the repo. |
 | `CLOUD0_SMOKE_WEEK` | tests only | `2026-W42` | A known complete, non-empty week for smoke/e2e tests. |
 | `CLOUD0_E2E_PORT` | tests only | `8097` | Port Playwright starts the binary on. |
 
@@ -167,7 +170,7 @@ Server log lines to expect in the terminal: `request` (one per HTTP request), an
 
 ### Labelled stubs (not bugs)
 
-- Tabs **Attribution, Budgets & Alerts, Vendors, Rightsizing, Targets** each show a "Coming in Phase N" panel (Attribution/Rightsizing/Targets: Phase 3; Budgets & Alerts/Vendors: Phase 4). Metrics, Errors, Month and Limits are real since Phase 2 (section 8).
+- Only the **Vendors** tab is still a stub ("Coming in Phase 4"). Every other tab is real: Metrics, Errors, Month and Limits (section 8); Attribution, Targets, Rightsizing and the By product / By environment Cost views (section 9); Alerts, Incidents and Budgets (section 10).
 - The Cost table columns **AI Cost (Groq) (stub)** and **claude (usage) (stub)** show "—" in every cell (Phase 4).
 - The Groq limits in the Limits tab are labelled stubs (Phase 4). There is no login, no scheduler and no AI in the product.
 
@@ -204,6 +207,68 @@ Four more tabs, all read-only views over data the **Refresh** buttons store (not
 
 **Phase 2 gate.** Same command as Phase 1, `make gate`; the new checks are `tests/smoke/live_phase2_test.go` (refresh `all` then the smoke week against real GCP: CPU for at least one VM, numeric Cloud Run 4xx/5xx, limit statuses, month total equal to the sum of its service rows, one run-log row per source) and `web/e2e/phase2-journey.spec.ts` (Playwright walk of Metrics, Errors, Month and Limits with provenance and CSV). Real GCP calls are made; a skipped test is not a pass.
 
+## 9. Phase 3: Attribution, Targets, Rightsizing, By product / By environment
+
+All computed at read time from the latest snapshot of the selected week; nothing is scheduled.
+
+| Tab / view | Shows |
+|---|---|
+| **Cost, By service / By product / By environment** | The toggle above the Cost table. By product and By environment group the same net cost by the attribution rules (GCP label > project > resource-name token), with a reconciliation badge (Σ groups + unattributed = Total GCP). Shared infrastructure sits in its own bucket unless you choose an allocation mode. A week without a snapshot, or with no rules yet, shows an empty-state hint instead. Provenance names the rule that matched. |
+| **Attribution** | Rules editor, seeder (preview, then apply), unattributed list with reasons, label suggestions with ready-to-run `gcloud` commands, and an optional LLM rule proposer. |
+| **Targets** | Monthly target per product with progress and projection. |
+| **Rightsizing** | Low-utilisation VMs with the evidence window (real Monitoring data). |
+
+**Rule proposer (optional, off by default).** `POST /api/v1/attribution/propose` answers `503 proposer_not_configured` and makes no outbound call unless `CLOUD0_OPENROUTER_API_KEY` is set; model from `CLOUD0_LLM_MODEL`. Prompts contain resource names, labels and project ids only, never amounts. Proposals are never applied automatically: you accept one by saving it in the rules editor.
+
+**Errors triage.** The Errors tab now ranks each Cloud Run service and Error Reporting group as needs attention / watch / noise / healthy with plain-language reasons, 5xx and client-4xx rates, and the change against the previous week; samples link to Logs Explorer.
+
+**Saving rules and targets writes to the local SQLite DB only** (never to GCP). To walk the tab without changing anything use the seed *preview* and the explain drawer.
+
+## 10. Phase 4 (part): Alerts, Incidents, Budgets and the two service accounts
+
+| Tab | Shows |
+|---|---|
+| **Alerts** | Monitoring alert policies, notification channels, uptime checks, templates, coverage and routing; a drafts editor; an adopt flow that proposes cloud0-managed replacements for hand-made policies; the change history. |
+| **Incidents** | Open incidents (severity, link to the console, Snooze), the selected week's alert history with copy-for-weekly-review and CSV export, and active snoozes. |
+| **Budgets** | Billing budgets for the billing account with suggested amounts from your weekly snapshots; create and edit through the same preview flow. |
+
+**Two service accounts.** Keep their keys outside the repo; the repo is public.
+
+| Account | Env var | Used for | Roles |
+|---|---|---|---|
+| reader (read-only) | `GOOGLE_APPLICATION_CREDENTIALS` (or ADC) | every `GET`, BigQuery, Monitoring, Logging, Error Reporting, and read-only previews | `roles/bigquery.jobUser` on `<BIGQUERY_PROJECT>`, `roles/bigquery.dataViewer` on the billing export dataset, and on every project in `CLOUD0_GCP_PROJECTS`: `roles/monitoring.viewer`, `roles/logging.viewer`, `roles/errorreporting.viewer`, `roles/compute.viewer`. |
+| alerts writer | `CLOUD0_ALERTS_CREDENTIALS` | Apply, budget reads and writes, and nothing else | on **every** project in `CLOUD0_GCP_PROJECTS`: `roles/monitoring.alertPolicyEditor`, `roles/monitoring.notificationChannelEditor`, `roles/monitoring.uptimeCheckConfigEditor`, `roles/monitoring.snoozeEditor`; on the billing account `<BILLING_ACCOUNT_ID>`: `roles/billing.costsManager`. Log-match templates (for example "Application error logged") also need `roles/logging.configWriter` on the project, because Cloud Logging checks `logging.notificationRules.create`; without it Apply answers `403 permission_denied` naming that role. |
+
+Enable the APIs once (replace the placeholders):
+
+```sh
+gcloud services enable monitoring.googleapis.com --project=<PROJECT_ID>        # every project
+gcloud services enable billingbudgets.googleapis.com --project=<QUOTA_PROJECT>   # the Billing Budget API
+```
+
+Example grants (placeholders only):
+
+```sh
+gcloud projects add-iam-policy-binding <PROJECT_ID> --member=serviceAccount:<ALERTS_SA_EMAIL> --role=roles/monitoring.alertPolicyEditor
+gcloud billing accounts add-iam-policy-binding <BILLING_ACCOUNT_ID> --member=serviceAccount:<ALERTS_SA_EMAIL> --role=roles/billing.costsManager
+```
+
+**Preview-then-apply safety model.** No change reaches GCP in one step. Every create / update / delete / snooze is first **previewed**: the server returns a diff, a `gcloud` equivalent and a short-lived token (10 minutes). **Apply** re-reads the live resource and refuses with `409 preview_stale` if it changed since the preview; deletes also need an explicit confirmation. New policies are created from templates and labelled `managed-by=cloud0`; hand-made policies are only replaced through the adopt preview, which never deletes the old policy for you. Every applied write is recorded in the change history. Previews work with the reader account; Apply needs `CLOUD0_ALERTS_CREDENTIALS`.
+
+**Never run Apply against a real project while testing.** The e2e suite and the tour use only reads and previews; the Go live tests create disabled `cloud0-test-*` objects and delete them again.
+
+## 11. Run everything and the gate
+
+```sh
+# working directory: repo root
+make build                                                         # web + Go binary
+GO111MODULE=on GOTOOLCHAIN=local /opt/homebrew/bin/go vet ./...
+GO111MODULE=on GOTOOLCHAIN=local /opt/homebrew/bin/go test -count=1 -p 1 ./internal/... ./tests/...
+cd web && pnpm exec tsc --noEmit && pnpm test && pnpm exec playwright test
+```
+
+`pnpm` must run on Node 22 (section 2; prefix `/Users/sai/.local/bin` on `PATH`). Playwright starts its own server on a temp DB against real GCP and takes several minutes; it includes `web/e2e/full-tour.spec.ts`, which opens every tab by hash, expects no error banner and checks the Cost By product view. Tests that need `CLOUD0_ALERTS_CREDENTIALS` use it only for read calls and disabled, self-cleaning test objects.
+
 ## Layout
 
 ```
@@ -221,6 +286,8 @@ internal/errorsrc      error sources (Cloud Run, Error Reporting, load balancer,
 internal/billingusage  billing-usage quantities (egress, LB hours)
 internal/monthcost     calendar-month roll-up and summary
 internal/limits        free-tier allowances and proximity levels
+internal/attribution   rules engine, seeder, breakdowns, targets, rightsizing, optional proposer
+internal/alerting      alert policies, templates, engine (preview/apply), incidents, history; budgets/ and monclient/ (GCP clients)
 internal/httpapi       router, envelope, handlers for every endpoint in spec/api.md
 internal/webui         embedded UI (dist/ synced by make web-build) + placeholder page
 internal/testenv       test helpers: .env loading, BigQuery skip rule, temp DB, free port

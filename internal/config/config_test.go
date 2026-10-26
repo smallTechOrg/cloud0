@@ -191,3 +191,36 @@ func TestRedacted_NeverExposesTheCredentialsPath(t *testing.T) {
 		t.Errorf("unset credentials should read \"unset (ADC)\"")
 	}
 }
+
+func TestLoad_ProposerSettings(t *testing.T) {
+	cfg, err := Load(env(minimal()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.OpenRouterAPIKey != "" || cfg.LLMModel != "anthropic/claude-sonnet-4-6" {
+		t.Errorf("defaults wrong: key set=%v model=%q", cfg.OpenRouterAPIKey != "", cfg.LLMModel)
+	}
+	if cfg.Redacted()["openrouter_api_key"] != "unset" {
+		t.Errorf("unset key should read \"unset\"")
+	}
+
+	m := minimal()
+	m["CLOUD0_OPENROUTER_API_KEY"] = "  placeholder-not-a-real-key  "
+	m["CLOUD0_LLM_MODEL"] = "vendor/model-x"
+	cfg, err = Load(env(m))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.OpenRouterAPIKey != "placeholder-not-a-real-key" || cfg.LLMModel != "vendor/model-x" {
+		t.Errorf("not read/trimmed: model=%q", cfg.LLMModel)
+	}
+	r := cfg.Redacted()
+	if r["openrouter_api_key"] != "set" || r["llm_model"] != "vendor/model-x" {
+		t.Errorf("redacted view wrong: %v", r)
+	}
+	for k, v := range r {
+		if s, ok := v.(string); ok && strings.Contains(s, "placeholder-not-a-real-key") {
+			t.Errorf("redacted view leaks the API key under %q", k)
+		}
+	}
+}
