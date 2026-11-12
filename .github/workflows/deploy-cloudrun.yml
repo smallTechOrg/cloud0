@@ -6,14 +6,16 @@
 # workflow_dispatch runs of this repo) impersonating the shared github-actions-deployer. The service runs as
 # cloud0-reader.
 # The repo is public, so every identifier comes from repository secrets: GCP_PROJECT_ID, GCP_PROJECT_NUMBER,
-# CLOUD0_GCP_PROJECTS, CLOUD0_BIGQUERY_PROJECT, CLOUD0_BILLING_EXPORT_TABLE, CLOUD0_PASSWORD, and optionally
-# CLOUD0_BILLING_ACCOUNT_ID, CLOUD0_OPENROUTER_API_KEY.
+# CLOUD0_GCP_PROJECTS, CLOUD0_BIGQUERY_PROJECT, CLOUD0_BILLING_EXPORT_TABLE, CLOUD0_PASSWORD, CLOUD0_DATABASE_URL,
+# and optionally CLOUD0_BILLING_ACCOUNT_ID, CLOUD0_OPENROUTER_API_KEY.
+#
+# Data lives in Cloud SQL (database cloud0 on the shared ai-agent-db Postgres instance, private IP, reached through
+# Direct VPC egress), so any number of instances share it and nothing is lost between them. Migrations run as the
+# cloud0-migrate Cloud Run job before the new revision takes traffic.
 #
 # The URL is public and CLOUD0_PASSWORD guards every page and API call (browsers sign in on /login; this workflow
 # uses HTTP Basic auth with no username). The deploy refuses to run without it, and the health check confirms a
 # request without it is turned away.
-# SQLite lives on the instance and is restored from / streamed to gs://<PROJECT_ID>-cloud0-data by Litestream,
-# which is why the service is capped at one instance.
 name: deploy-cloud-run
 on:
   push:
@@ -52,9 +54,10 @@ jobs:
           CLOUD0_BIGQUERY_PROJECT: ${{ secrets.CLOUD0_BIGQUERY_PROJECT }}
           CLOUD0_BILLING_EXPORT_TABLE: ${{ secrets.CLOUD0_BILLING_EXPORT_TABLE }}
           CLOUD0_PASSWORD: ${{ secrets.CLOUD0_PASSWORD }}
+          CLOUD0_DATABASE_URL: ${{ secrets.CLOUD0_DATABASE_URL }}
         run: |
           missing=""
-          for k in GCP_PROJECT_ID GCP_PROJECT_NUMBER CLOUD0_GCP_PROJECTS CLOUD0_BIGQUERY_PROJECT CLOUD0_BILLING_EXPORT_TABLE CLOUD0_PASSWORD; do
+          for k in GCP_PROJECT_ID GCP_PROJECT_NUMBER CLOUD0_GCP_PROJECTS CLOUD0_BIGQUERY_PROJECT CLOUD0_BILLING_EXPORT_TABLE CLOUD0_PASSWORD CLOUD0_DATABASE_URL; do
             [ -n "${!k}" ] || missing="$missing $k"
           done
           if [ -n "$missing" ]; then
@@ -81,10 +84,9 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          target: cloudrun
           push: true
           tags: ${{ steps.image.outputs.ref }}
-          cache-from: type=gha,scope=cloudrun
+          cache-from: type=gha,scope=cloud0
 
       - name: Previous serving revision (for the rollback guard)
         run: |
@@ -93,39 +95,58 @@ jobs:
           echo "Previous revision: ${PREV:-<none, first deploy>}"
           echo "PREV=${PREV}" >> "$GITHUB_ENV"
 
-      - name: Deploy
-        id: deploy
+      - name: Runtime config
         env:
-          IMAGE: ${{ steps.image.outputs.ref }}
           CLOUD0_GCP_PROJECTS: ${{ secrets.CLOUD0_GCP_PROJECTS }}
           CLOUD0_BIGQUERY_PROJECT: ${{ secrets.CLOUD0_BIGQUERY_PROJECT }}
           CLOUD0_BILLING_EXPORT_TABLE: ${{ secrets.CLOUD0_BILLING_EXPORT_TABLE }}
           CLOUD0_BILLING_ACCOUNT_ID: ${{ secrets.CLOUD0_BILLING_ACCOUNT_ID }}
           CLOUD0_OPENROUTER_API_KEY: ${{ secrets.CLOUD0_OPENROUTER_API_KEY }}
           CLOUD0_PASSWORD: ${{ secrets.CLOUD0_PASSWORD }}
+          CLOUD0_DATABASE_URL: ${{ secrets.CLOUD0_DATABASE_URL }}
         run: |
           set -euo pipefail
-          export CLOUD0_LITESTREAM_URL="gcs://${PROJECT}-cloud0-data/cloud0.db"
-
           # Apply (alert policies, budgets) needs the alerts-writer key; it is mounted only when provision.sh stored it.
-          SECRET_FLAGS=()
           ALERTS_KEY_VERSION="$(gcloud secrets versions list cloud0-alerts-key --filter=state=ENABLED --limit=1 --format='value(name)' 2>/dev/null || true)"
           if [ -n "$ALERTS_KEY_VERSION" ]; then
-            SECRET_FLAGS=(--update-secrets=/secrets/alerts/key.json=cloud0-alerts-key:latest)
+            echo "ALERTS_SECRET=/secrets/alerts/key.json=cloud0-alerts-key:latest" >> "$GITHUB_ENV"
             export CLOUD0_ALERTS_CREDENTIALS=/secrets/alerts/key.json
           else
             echo "::notice::No cloud0-alerts-key secret: Alerts, Incidents and Budgets stay read-only."
           fi
 
-          # YAML env file (not --set-env-vars): CLOUD0_GCP_PROJECTS holds commas. It replaces every variable each deploy.
-          ENV_FILE="$(mktemp)"; trap 'rm -f "$ENV_FILE"' EXIT
+          # YAML env file (not --set-env-vars): CLOUD0_GCP_PROJECTS holds commas. It replaces every variable each
+          # deploy and is shared by the migrate job and the service. RUNNER_TEMP is wiped when the job ends.
+          ENV_FILE="${RUNNER_TEMP}/cloud0-env.yaml"
+          echo "ENV_FILE=${ENV_FILE}" >> "$GITHUB_ENV"
           python3 - "$ENV_FILE" <<'PY'
           import json, os, sys
-          env = {k: os.environ[k] for k in ["CLOUD0_GCP_PROJECTS", "CLOUD0_BIGQUERY_PROJECT", "CLOUD0_BILLING_EXPORT_TABLE", "CLOUD0_LITESTREAM_URL", "CLOUD0_PASSWORD"]}
+          env = {k: os.environ[k] for k in ["CLOUD0_GCP_PROJECTS", "CLOUD0_BIGQUERY_PROJECT", "CLOUD0_BILLING_EXPORT_TABLE", "CLOUD0_PASSWORD", "CLOUD0_DATABASE_URL"]}
           env.update({k: os.environ[k] for k in ["CLOUD0_BILLING_ACCOUNT_ID", "CLOUD0_OPENROUTER_API_KEY", "CLOUD0_ALERTS_CREDENTIALS"] if os.environ.get(k)})
-          env.update(CLOUD0_DB_PATH="/data/cloud0.db", CLOUD0_LOG_LEVEL="info")
+          env.update(CLOUD0_LOG_LEVEL="info")
           open(sys.argv[1], "w").write("".join(f"{k}: {json.dumps(v)}\n" for k, v in env.items()))
           PY
+
+      - name: Run migrations (before the new revision takes traffic)
+        env:
+          IMAGE: ${{ steps.image.outputs.ref }}
+        run: |
+          set -euo pipefail
+          gcloud run jobs deploy cloud0-migrate --region "$REGION" --image "$IMAGE" --args migrate,up \
+            --service-account "cloud0-reader@${PROJECT}.iam.gserviceaccount.com" \
+            --network default --subnet default --vpc-egress private-ranges-only \
+            --cpu 1 --memory 512Mi --max-retries 0 --task-timeout 300 \
+            --env-vars-file "$ENV_FILE" --quiet
+          gcloud run jobs execute cloud0-migrate --region "$REGION" --wait
+
+      - name: Deploy
+        id: deploy
+        env:
+          IMAGE: ${{ steps.image.outputs.ref }}
+        run: |
+          set -euo pipefail
+          SECRET_FLAGS=()
+          if [ -n "${ALERTS_SECRET:-}" ]; then SECRET_FLAGS=(--update-secrets="$ALERTS_SECRET"); fi
 
           # Revisions are named after the commit; a re-run of the same commit (e.g. a drill) must not collide.
           SUFFIX="sha-${GITHUB_SHA::7}"
@@ -135,14 +156,14 @@ jobs:
           fi
           echo "NEW_REVISION=${SERVICE}-${SUFFIX}" >> "$GITHUB_ENV"
 
-          # One instance at most: two would each restore and replicate the same SQLite file. Request-based billing
-          # is required by org policy (custom.denyInstanceBilling), so Litestream pushes changes while requests run
-          # and on shutdown (Cloud Run gives CPU after SIGTERM); only a hard crash in between can lose a write.
+          # Request-based billing (org policy custom.denyInstanceBilling) and scale to zero; the data is in Cloud SQL,
+          # reached on its private IP through Direct VPC egress, so instances are interchangeable.
           gcloud run deploy "$SERVICE" --region "$REGION" --image "$IMAGE" \
             --service-account "cloud0-reader@${PROJECT}.iam.gserviceaccount.com" \
             --allow-unauthenticated --port 8087 --execution-environment gen2 \
-            --cpu 1 --memory 512Mi --min-instances 0 --max-instances 1 --cpu-throttling --no-cpu-boost \
+            --cpu 1 --memory 512Mi --min-instances 0 --max-instances 3 --cpu-throttling --no-cpu-boost \
             --concurrency 80 --timeout 900 --revision-suffix "$SUFFIX" \
+            --network default --subnet default --vpc-egress private-ranges-only \
             --env-vars-file "$ENV_FILE" "${SECRET_FLAGS[@]}" --quiet
           # After a rollback, traffic stays pinned to the old revision; send it to this one.
           gcloud run services update-traffic "$SERVICE" --region "$REGION" --to-latest --quiet

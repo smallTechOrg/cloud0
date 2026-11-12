@@ -160,16 +160,13 @@ func InsertSnapshot(ctx context.Context, q Querier, ns NewSnapshot) (Snapshot, e
 		snap.NetTotal += r.Net
 	}
 
-	res, err := q.ExecContext(ctx, `INSERT INTO snapshots (iso_year, iso_week, week_start, week_end, fetched_at, status_at_fetch, run_id, run_source_id, row_count, gross_total, credits_total, net_total, created_at)
+	var err error
+	snap.ID, err = InsertID(ctx, q, `INSERT INTO snapshots (iso_year, iso_week, week_start, week_end, fetched_at, status_at_fetch, run_id, run_source_id, row_count, gross_total, credits_total, net_total, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		snap.Week.Year, snap.Week.Week, snap.WeekStart, snap.WeekEnd, FormatTime(snap.FetchedAt), string(snap.StatusAtFetch),
 		snap.RunID, snap.RunSourceID, snap.RowCount, snap.GrossTotal, snap.CreditsTotal, snap.NetTotal, FormatTime(snap.CreatedAt))
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("store: insert snapshot %s: %w", snap.WeekID, err)
-	}
-	snap.ID, err = LastInsertID(res)
-	if err != nil {
-		return Snapshot{}, err
 	}
 	for start := 0; start < len(rows); start += InsertBatchSize {
 		end := min(start+InsertBatchSize, len(rows))

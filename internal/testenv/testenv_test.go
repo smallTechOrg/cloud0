@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -20,6 +21,12 @@ func TestRepoRoot_FindsGoMod(t *testing.T) {
 
 func TestTempDB_IsInsideTempDirAndDoesNotExistYet(t *testing.T) {
 	p := TempDB(t)
+	if Postgres() {
+		if !strings.HasPrefix(p, os.Getenv(TestDatabaseURLVar)) || !strings.Contains(p, "search_path=t_") {
+			t.Fatalf("want the test server URL with a fresh search_path schema, got %s", p)
+		}
+		return
+	}
 	if filepath.Base(p) != "cloud0-test.db" {
 		t.Fatalf("unexpected name %s", p)
 	}

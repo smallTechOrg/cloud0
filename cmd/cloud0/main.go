@@ -113,7 +113,7 @@ func loadConfig() (config.Config, bool) {
 }
 
 func openStore(ctx context.Context, cfg config.Config) (*store.Store, bool) {
-	st, err := store.Open(ctx, cfg.DBPath)
+	st, err := store.Open(ctx, cfg.DatabaseTarget())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cloud0: %v\n", err)
 		return nil, false
@@ -138,7 +138,7 @@ func migrateUp() int {
 		return exitRuntime
 	}
 	if len(applied) == 0 {
-		fmt.Printf("cloud0: no pending migrations (%s)\n", cfg.DBPath)
+		fmt.Printf("cloud0: no pending migrations (%s)\n", store.Redact(cfg.DatabaseTarget()))
 	}
 	for _, m := range applied {
 		fmt.Printf("cloud0: applied %s\n", m.Source)
@@ -162,7 +162,7 @@ func migrateStatus() int {
 		fmt.Fprintf(os.Stderr, "cloud0: %v\n", err)
 		return exitRuntime
 	}
-	fmt.Printf("cloud0: migrations for %s\n", cfg.DBPath)
+	fmt.Printf("cloud0: migrations for %s\n", store.Redact(cfg.DatabaseTarget()))
 	tw := tabwriter.NewWriter(os.Stdout, 0, 4, 4, ' ', 0)
 	fmt.Fprintln(tw, "Applied At\tMigration")
 	pending := 0

@@ -121,14 +121,10 @@ func CreateRun(ctx context.Context, q Querier, nr NewRun) (Run, error) {
 		return Run{}, fmt.Errorf("%w: started_at required", ErrInvalidInput)
 	}
 	started := nr.StartedAt.UTC().Truncate(time.Second)
-	res, err := q.ExecContext(ctx, `INSERT INTO runs ("trigger", from_iso_year, from_iso_week, to_iso_year, to_iso_week, started_at, status, created_at)
+	id, err := InsertID(ctx, q, `INSERT INTO runs ("trigger", from_iso_year, from_iso_week, to_iso_year, to_iso_week, started_at, status, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, string(nr.Trigger), nr.From.Year, nr.From.Week, nr.To.Year, nr.To.Week, FormatTime(started), string(RunRunning), FormatTime(started))
 	if err != nil {
 		return Run{}, fmt.Errorf("store: create run: %w", err)
-	}
-	id, err := LastInsertID(res)
-	if err != nil {
-		return Run{}, err
 	}
 	return Run{ID: id, Trigger: nr.Trigger, From: nr.From.String(), To: nr.To.String(), FromWeek: nr.From, ToWeek: nr.To,
 		StartedAt: started, Status: RunRunning, Sources: []RunSource{}, SnapshotIDs: []int64{}}, nil
@@ -223,16 +219,13 @@ func AddSource(ctx context.Context, q Querier, ns NewRunSource) (RunSource, erro
 		ErrorCode: ns.ErrorCode, ErrorMessage: msg, FixHint: ns.FixHint,
 		SQLText: ns.SQLText, Params: paramsJSON,
 	}
-	res, err := q.ExecContext(ctx, `INSERT INTO run_sources (run_id, source, status, started_at, finished_at, duration_ms, sql_text, params_json, job_id, bytes_processed, bytes_billed, cache_hit, rows_returned, error_code, error_message, fix_hint)
+	src.ID, err = InsertID(ctx, q, `INSERT INTO run_sources (run_id, source, status, started_at, finished_at, duration_ms, sql_text, params_json, job_id, bytes_processed, bytes_billed, cache_hit, rows_returned, error_code, error_message, fix_hint)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		src.RunID, src.Source, string(src.Status), FormatTime(src.StartedAt), FormatTime(src.FinishedAt), src.DurationMs, src.SQLText, string(paramsJSON),
 		nullableString(src.JobID), nullableInt(src.BytesProcessed), nullableInt(src.BytesBilled), nullableBool(src.CacheHit), nullableInt(src.RowsReturned),
 		nullableString(src.ErrorCode), nullableString(src.ErrorMessage), nullableString(src.FixHint))
 	if err != nil {
 		return RunSource{}, fmt.Errorf("store: add source to run %d: %w", ns.RunID, err)
-	}
-	if src.ID, err = LastInsertID(res); err != nil {
-		return RunSource{}, err
 	}
 	return src, nil
 }

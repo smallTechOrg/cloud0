@@ -1,17 +1,24 @@
 // Package testenv holds test-only helpers: loading the repo-root .env when
 // variables are absent, skipping with the documented message when the
-// BigQuery variables are missing, a temp SQLite file per test and an
-// OS-assigned free port.
+// BigQuery variables are missing, a fresh database per test (SQLite, or a
+// Postgres schema when CLOUD0_TEST_DATABASE_URL is set) and an OS-assigned
+// free port.
 package testenv
 
 import (
+	"database/sql"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	_ "github.com/jackc/pgx/v5/stdlib" // registers the "pgx" driver TempDB uses to create test schemas
 	"github.com/joho/godotenv"
 )
 
@@ -100,11 +107,44 @@ func RequireBigQuery(t testing.TB) {
 	}
 }
 
-// TempDB returns a path for a fresh SQLite file inside t.TempDir(); the
-// directory (and the WAL/SHM side files) is removed when the test ends.
+// TestDatabaseURLVar names a Postgres server to run the store-backed tests
+// against (CI sets it; each test gets its own schema). Unset → SQLite.
+const TestDatabaseURLVar = "CLOUD0_TEST_DATABASE_URL"
+
+// Postgres reports whether TempDB hands out Postgres databases.
+func Postgres() bool { return os.Getenv(TestDatabaseURLVar) != "" }
+
+var schemaSeq atomic.Int64
+
+// TempDB returns a fresh database for one test, as a store.Open target: a
+// SQLite file inside t.TempDir() (removed with its WAL/SHM side files when
+// the test ends), or, when CLOUD0_TEST_DATABASE_URL is set, a new schema on
+// that Postgres server, selected through the returned URL's search_path and
+// dropped when the test ends.
 func TempDB(t testing.TB) string {
 	t.Helper()
-	return filepath.Join(t.TempDir(), "cloud0-test.db")
+	base := os.Getenv(TestDatabaseURLVar)
+	if base == "" {
+		return filepath.Join(t.TempDir(), "cloud0-test.db")
+	}
+	schema := fmt.Sprintf("t_%d_%d_%d", os.Getpid(), time.Now().UnixNano(), schemaSeq.Add(1))
+	admin, err := sql.Open("pgx", base)
+	if err != nil {
+		t.Fatalf("testenv: open %s: %v", TestDatabaseURLVar, err)
+	}
+	if _, err := admin.Exec(`CREATE SCHEMA ` + schema); err != nil {
+		_ = admin.Close()
+		t.Fatalf("testenv: create schema: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = admin.Exec(`DROP SCHEMA ` + schema + ` CASCADE`)
+		_ = admin.Close()
+	})
+	sep := "?"
+	if strings.Contains(base, "?") {
+		sep = "&"
+	}
+	return base + sep + "search_path=" + schema
 }
 
 // FreePort asks the OS for an unused TCP port on 127.0.0.1.

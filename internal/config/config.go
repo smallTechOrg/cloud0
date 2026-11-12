@@ -50,6 +50,11 @@ type Config struct {
 	Bind   string
 	DBPath string
 
+	// DatabaseURL (CLOUD0_DATABASE_URL), when set, is the Postgres database
+	// used instead of the SQLite file at DBPath (Cloud Run uses Cloud SQL).
+	// It holds a password: never printed; Redacted() reports only set/unset.
+	DatabaseURL string
+
 	FirstWeek           isoweek.Week
 	SettleHours         int
 	PartitionMarginDays int
@@ -144,6 +149,10 @@ func Load(getenv func(string) string) (Config, error) {
 	if cfg.DBPath == "" {
 		cfg.DBPath = DefaultDBPath
 	}
+	cfg.DatabaseURL = get("CLOUD0_DATABASE_URL")
+	if cfg.DatabaseURL != "" && !strings.HasPrefix(cfg.DatabaseURL, "postgres://") && !strings.HasPrefix(cfg.DatabaseURL, "postgresql://") {
+		errs = append(errs, &ValidationError{"CLOUD0_DATABASE_URL", "must be a Postgres URL (postgres://user:password@host:5432/db?sslmode=require), or unset to use CLOUD0_DB_PATH"})
+	}
 
 	cfg.FirstWeek, err = loadWeek(get, "CLOUD0_FIRST_WEEK", DefaultFirstWeek)
 	if err != nil {
@@ -218,6 +227,10 @@ func (c Config) Redacted() map[string]any {
 	if c.Password != "" {
 		password = "set"
 	}
+	databaseURL := "unset"
+	if c.DatabaseURL != "" {
+		databaseURL = "set"
+	}
 	return map[string]any{
 		"openrouter_api_key":    orKey,
 		"password":              password,
@@ -230,12 +243,22 @@ func (c Config) Redacted() map[string]any {
 		"port":                  c.Port,
 		"bind":                  c.Bind,
 		"db_path":               c.DBPath,
+		"database_url":          databaseURL,
 		"first_week":            c.FirstWeek.String(),
 		"settle_hours":          c.SettleHours,
 		"partition_margin_days": c.PartitionMarginDays,
 		"log_level":             c.LogLevel,
 		"currency":              c.Currency,
 	}
+}
+
+// DatabaseTarget is what store.Open opens: the Postgres URL when
+// CLOUD0_DATABASE_URL is set, else the SQLite file.
+func (c Config) DatabaseTarget() string {
+	if c.DatabaseURL != "" {
+		return c.DatabaseURL
+	}
+	return c.DBPath
 }
 
 // Addr is the host:port the HTTP server listens on.

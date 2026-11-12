@@ -67,12 +67,11 @@ func TestMigration0005_UpgradeKeepsOldRows(t *testing.T) {
 	}
 	week := isoweek.MustParse("2026-W43")
 	run, src := seedRunAndSource(t, s.DB, week, week)
-	snapRes, err := s.DB.ExecContext(ctx, `INSERT INTO snapshots (iso_year, iso_week, week_start, week_end, fetched_at, status_at_fetch, run_id, run_source_id, row_count, gross_total, credits_total, net_total, created_at)
+	sid, err := InsertID(ctx, s.DB, `INSERT INTO snapshots (iso_year, iso_week, week_start, week_end, fetched_at, status_at_fetch, run_id, run_source_id, row_count, gross_total, credits_total, net_total, created_at)
 VALUES (2026, 43, '2026-10-19', '2026-10-25', ?, 'final', ?, ?, 1, 1, 0, 1, ?)`, FormatTime(testNow), run.ID, src.ID, FormatTime(testNow))
 	if err != nil {
 		t.Fatal(err)
 	}
-	sid, _ := snapRes.LastInsertId()
 	if _, err := s.DB.ExecContext(ctx, `INSERT INTO snapshot_rows (snapshot_id, project_id, service, sku, gross, credits, net, line_items) VALUES (?, 'proj-a', 'Cloud Run', 'cpu', 1, 0, 1, 1)`, sid); err != nil {
 		t.Fatalf("0004-shaped insert: %v", err)
 	}

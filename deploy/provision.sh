@@ -4,12 +4,13 @@
 # Run from the repo root as a project owner (gcloud auth login) with gh logged in to the repo:
 #   bash deploy/provision.sh [--alerts-key /path/to/alerts-writer-key.json]
 #
-# Creates: the Artifact Registry repo `cloud0`, the bucket <project>-cloud0-data (Litestream replica of the SQLite
-# file), and the Workload Identity provider `cloud0-github` (pool `github`) that lets this repo's push /
+# Creates: the Artifact Registry repo `cloud0`; on the shared Cloud SQL instance ai-agent-db (Postgres 17, private
+# IP) the user cloud0_app and the database cloud0 it owns, whose connection URL becomes the CLOUD0_DATABASE_URL
+# secret; and the Workload Identity provider `cloud0-github` (pool `github`) that lets this repo's push /
 # workflow_dispatch runs impersonate the shared deployer github-actions-deployer. That account must already exist and
 # already holds Cloud Run Admin, Artifact Registry writer and Service Account User on the project (it deploys the
 # other services too), so nothing is granted to it here. The service runs as the existing read-only cloud0-reader
-# (README section 10), which is only given object access to the data bucket.
+# (README section 10).
 #
 # The repo is public, so identifiers go to GitHub repository secrets, never into the workflow: the project id and
 # number, plus CLOUD0_GCP_PROJECTS, CLOUD0_BIGQUERY_PROJECT, CLOUD0_BILLING_EXPORT_TABLE and the optional
@@ -29,6 +30,10 @@ AR_REPO=cloud0
 WIF_POOL=github
 WIF_PROVIDER=cloud0-github
 ALERTS_SECRET=cloud0-alerts-key
+SQL_INSTANCE="${SQL_INSTANCE:-ai-agent-db}"
+DB_NAME=cloud0
+DB_USER=cloud0_app
+DBINIT_JOB=cloud0-dbinit
 
 ALERTS_KEY=""
 while [ $# -gt 0 ]; do
@@ -76,13 +81,12 @@ PROJECT_NUMBER="$(gcloud projects describe "$PROJECT" --format='value(projectNum
 G=(--project "$PROJECT")
 RUN_SA="cloud0-reader@${PROJECT}.iam.gserviceaccount.com"
 DEPLOY_SA="github-actions-deployer@${PROJECT}.iam.gserviceaccount.com"
-BUCKET="${PROJECT}-cloud0-data"
 
 echo "== APIs"
 gcloud services enable run.googleapis.com artifactregistry.googleapis.com iam.googleapis.com \
-  iamcredentials.googleapis.com sts.googleapis.com storage.googleapis.com secretmanager.googleapis.com \
+  iamcredentials.googleapis.com sts.googleapis.com sqladmin.googleapis.com secretmanager.googleapis.com \
   cloudresourcemanager.googleapis.com "${G[@]}"
-echo "ENABLED run, artifactregistry, iam, iamcredentials, sts, storage, secretmanager, cloudresourcemanager"
+echo "ENABLED run, artifactregistry, iam, iamcredentials, sts, sqladmin, secretmanager, cloudresourcemanager"
 
 echo "== Artifact Registry"
 if gcloud artifacts repositories describe "$AR_REPO" --location "$REGION" "${G[@]}" >/dev/null 2>&1; then
@@ -93,15 +97,6 @@ else
   created "repository $AR_REPO"
 fi
 
-echo "== Data bucket (Litestream replica)"
-if gcloud storage buckets describe "gs://$BUCKET" "${G[@]}" >/dev/null 2>&1; then
-  exists "gs://$BUCKET"
-else
-  gcloud storage buckets create "gs://$BUCKET" --location "$REGION" --uniform-bucket-level-access \
-    --public-access-prevention "${G[@]}"
-  created "gs://$BUCKET"
-fi
-
 echo "== Service accounts"
 gcloud iam service-accounts describe "$RUN_SA" "${G[@]}" >/dev/null 2>&1 \
   || die "$RUN_SA is missing: create the read-only account first (README section 10)"
@@ -110,10 +105,47 @@ gcloud iam service-accounts describe "$DEPLOY_SA" "${G[@]}" >/dev/null 2>&1 \
   || die "$DEPLOY_SA is missing: it is the shared GitHub deployer and is not created here"
 exists "github-actions-deployer (shared deployer)"
 
-echo "== IAM"
-retry gcloud storage buckets add-iam-policy-binding "gs://$BUCKET" \
-  --member "serviceAccount:$RUN_SA" --role roles/storage.objectAdmin "${G[@]}"
-granted "cloud0-reader: roles/storage.objectAdmin on gs://$BUCKET"
+echo "== Cloud SQL ($SQL_INSTANCE)"
+SQL_IP="${SQL_PRIVATE_IP:-}"
+for i in 0 1 2 3; do
+  [ -n "$SQL_IP" ] && break
+  if [ "$(gcloud sql instances describe "$SQL_INSTANCE" "${G[@]}" --format="value(ipAddresses[$i].type)")" = PRIVATE ]; then
+    SQL_IP="$(gcloud sql instances describe "$SQL_INSTANCE" "${G[@]}" --format="value(ipAddresses[$i].ipAddress)")"
+  fi
+done
+[ -n "$SQL_IP" ] || die "$SQL_INSTANCE has no private IP (set SQL_PRIVATE_IP)"
+DB_PASSWORD=""
+if gcloud sql users list --instance "$SQL_INSTANCE" "${G[@]}" --format='value(name)' | grep -qx "$DB_USER"; then
+  exists "sql-user $DB_USER (password not shown again; rotate: gcloud sql users set-password $DB_USER --instance $SQL_INSTANCE, then update the CLOUD0_DATABASE_URL secret)"
+else
+  # 32 random URL-safe base64 chars; the fixed tail meets Cloud SQL's policy (lower, upper, digit, symbol) every time.
+  DB_PASSWORD="$(head -c 24 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')Aa1-"
+  gcloud sql users create "$DB_USER" --instance "$SQL_INSTANCE" --password "$DB_PASSWORD" "${G[@]}" >/dev/null
+  created "sql-user $DB_USER"
+fi
+if gcloud sql databases list --instance "$SQL_INSTANCE" "${G[@]}" --format='value(name)' | grep -qx "$DB_NAME"; then
+  exists "database $DB_NAME"
+else
+  [ -n "$DB_PASSWORD" ] || die "database $DB_NAME is missing but $DB_USER already existed: rotate its password (above) and re-run, or create the database as $DB_USER"
+  # The instance has only a private IP, so the database is created from inside the VPC by a one-off job, connected
+  # as the app user, so that user owns it and its public schema (as workshop0's dbinit does). The job is deleted
+  # afterwards because its environment holds the password.
+  gcloud run jobs create "$DBINIT_JOB" --region "$REGION" --image docker.io/library/postgres:17-alpine \
+    --command psql --args="-v,ON_ERROR_STOP=1,-c,CREATE DATABASE ${DB_NAME}" \
+    --set-env-vars "PGHOST=${SQL_IP},PGUSER=${DB_USER},PGPASSWORD=${DB_PASSWORD},PGDATABASE=postgres,PGSSLMODE=require" \
+    --service-account "$RUN_SA" --network default --subnet default --vpc-egress private-ranges-only \
+    --max-retries 0 --task-timeout 120 "${G[@]}" --quiet >/dev/null
+  if ! gcloud run jobs execute "$DBINIT_JOB" --region "$REGION" --wait "${G[@]}" >/dev/null; then
+    gcloud run jobs delete "$DBINIT_JOB" --region "$REGION" --quiet "${G[@]}" >/dev/null || true
+    die "creating database $DB_NAME failed; see the $DBINIT_JOB job logs in Cloud Logging"
+  fi
+  gcloud run jobs delete "$DBINIT_JOB" --region "$REGION" --quiet "${G[@]}" >/dev/null
+  created "database $DB_NAME (owner $DB_USER)"
+fi
+DATABASE_URL=""
+if [ -n "$DB_PASSWORD" ]; then
+  DATABASE_URL="postgres://${DB_USER}:${DB_PASSWORD}@${SQL_IP}:5432/${DB_NAME}?sslmode=require"
+fi
 
 echo "== Workload Identity Federation"
 if gcloud iam workload-identity-pools describe "$WIF_POOL" --location global "${G[@]}" >/dev/null 2>&1; then
@@ -170,6 +202,15 @@ for k in CLOUD0_GCP_PROJECTS CLOUD0_BIGQUERY_PROJECT CLOUD0_BILLING_EXPORT_TABLE
   put "$k" "$(setting "$k")"
 done
 put CLOUD0_PASSWORD "${CLOUD0_PASSWORD:-}"
+if [ -n "$DATABASE_URL" ]; then
+  put CLOUD0_DATABASE_URL "$DATABASE_URL"
+  # The password exists nowhere else: keep a copy next to CLOUD0_PASSWORD's (.env.cloudrun is gitignored and is
+  # not read by cloud0).
+  printf 'CLOUD0_DATABASE_URL=%s\n' "$DATABASE_URL" >> .env.cloudrun
+  echo "SAVED   CLOUD0_DATABASE_URL to .env.cloudrun"
+else
+  echo "SKIPPED CLOUD0_DATABASE_URL ($DB_USER already existed; the secret keeps its current value)"
+fi
 if [ -z "${CLOUD0_PASSWORD:-}" ] && ! gh secret list -R "$GH_REPO" | grep -q '^CLOUD0_PASSWORD\b'; then
   echo "NOTE    the deploy needs CLOUD0_PASSWORD: gh secret set CLOUD0_PASSWORD -R $GH_REPO"
 fi

@@ -69,14 +69,12 @@ func InsertMonthSnapshot(ctx context.Context, q Querier, ns NewMonthSnapshot) (M
 		snap.CreditsTotal += r.Credits
 		snap.NetTotal += r.Net
 	}
-	res, err := q.ExecContext(ctx, `INSERT INTO month_snapshots (month, month_start, month_end, fetched_at, status_at_fetch, run_id, run_source_id, row_count, gross_total, credits_total, net_total, created_at)
+	var err error
+	snap.ID, err = InsertID(ctx, q, `INSERT INTO month_snapshots (month, month_start, month_end, fetched_at, status_at_fetch, run_id, run_source_id, row_count, gross_total, credits_total, net_total, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, snap.Month, snap.MonthStart, snap.MonthEnd, FormatTime(snap.FetchedAt), string(snap.StatusAtFetch),
 		snap.RunID, nullableInt(snap.RunSourceID), snap.RowCount, snap.GrossTotal, snap.CreditsTotal, snap.NetTotal, FormatTime(snap.FetchedAt))
 	if err != nil {
 		return MonthSnapshot{}, fmt.Errorf("store: insert month snapshot %s: %w", key, err)
-	}
-	if snap.ID, err = LastInsertID(res); err != nil {
-		return MonthSnapshot{}, err
 	}
 	for _, r := range rows {
 		if _, err := q.ExecContext(ctx, `INSERT INTO month_rows (snapshot_id, month, invoice_month, project_id, service_id, service, gross, credits, net) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,

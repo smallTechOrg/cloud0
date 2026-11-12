@@ -122,13 +122,11 @@ func InsertMetricSnapshot(ctx context.Context, q Querier, ns NewMetricSnapshot) 
 		FetchedAt: ns.FetchedAt.UTC().Truncate(time.Second), StatusAtFetch: ns.StatusAtFetch,
 		RunID: ns.RunID, RowCount: len(ns.Rows),
 	}
-	res, err := q.ExecContext(ctx, `INSERT INTO metric_snapshots (iso_year, iso_week, week_start, week_end, fetched_at, status_at_fetch, run_id, row_count, created_at)
+	var err error
+	snap.ID, err = InsertID(ctx, q, `INSERT INTO metric_snapshots (iso_year, iso_week, week_start, week_end, fetched_at, status_at_fetch, run_id, row_count, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, snap.Week.Year, snap.Week.Week, snap.WeekStart, snap.WeekEnd, FormatTime(snap.FetchedAt), string(snap.StatusAtFetch), snap.RunID, snap.RowCount, FormatTime(snap.FetchedAt))
 	if err != nil {
 		return MetricSnapshot{}, fmt.Errorf("store: insert metric snapshot %s: %w", snap.WeekID, err)
-	}
-	if snap.ID, err = LastInsertID(res); err != nil {
-		return MetricSnapshot{}, err
 	}
 	for _, r := range ns.Rows {
 		cells := make(map[string]CellJSON, len(r.Cells))
