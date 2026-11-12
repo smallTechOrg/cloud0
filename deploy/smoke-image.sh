@@ -22,7 +22,7 @@ start() {
     -e CLOUD0_BILLING_EXPORT_TABLE=ci-project.ci_dataset.ci_table \
     "$IMAGE" >/dev/null
   for _ in $(seq 1 60); do
-    if curl -fsS -m 5 -o /dev/null "${URL}/health"; then return 0; fi
+    if curl -fs -m 5 -o /dev/null "${URL}/health"; then return 0; fi  # silent: refused until cloud0 listens
     if [ "$(docker inspect -f '{{.State.Running}}' "$NAME")" != true ]; then break; fi
     sleep 1
   done
