@@ -207,6 +207,17 @@ Body: `{"body": "text"}`. Non-empty → upsert, 200 as GET. Empty string (after 
 | any other non-`/api` path | `index.html`, 200 (SPA fallback) |
 | `/api/v1/*` unmatched | 404 `not_found` envelope |
 
+## Password access (optional, `CLOUD0_PASSWORD`)
+
+Off when `CLOUD0_PASSWORD` is unset (local use): nothing below applies and `/api/v1/login` is an unknown path. When set (Cloud Run), every page and API call needs the password. There is no username.
+
+- **Browsers** sign in on `GET /login` (one password field). It posts to `POST /api/v1/login`, which sets the `cloud0_session` cookie (HttpOnly, SameSite=Lax, Secure over HTTPS, 30 days). The cookie is signed with a key derived from the password, so changing the password signs everyone out.
+- **Scripts** may instead send the password with HTTP Basic auth; the username is ignored (`curl -u :PASSWORD`).
+- **Without either:** a page request answers `303` to `/login?next=<path>`; an API request answers `401 unauthorized` (envelope, hint names both ways in). No `WWW-Authenticate` header is sent, so the browser never shows its own sign-in dialog. `GET /login`, `/login.html` and `/_next/*` (the page and its static assets) are always served.
+
+### `POST /api/v1/login`
+Body: `{"password": "text"}`. Match → 200 `{"ok": true}` plus the session cookie. Mismatch → 401 `invalid_password`. Malformed body → 400 `invalid_request`.
+
 ## Phase 2 additions (frozen)
 
 Same envelope, `WeekID`/`Scope` rules and error handling as Phase 1. New error codes (add to the table above):

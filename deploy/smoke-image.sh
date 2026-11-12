@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Proves the Cloud Run image keeps its data across instances, without GCP: start it with a local Litestream replica,
 # write a week note, stop it with SIGTERM (as Cloud Run does), start a fresh container on the same replica and read
-# the note back. Runs with CLOUD0_PASSWORD set, as on Cloud Run, and checks a request without it gets 401.
+# the note back. Runs with CLOUD0_PASSWORD set, as on Cloud Run, and checks the sign-in flow: an API call without
+# it gets 401, a page redirects to /login, and signing in there gives a working session.
 # Run by CI on every PR and before every deploy.
 #   bash deploy/smoke-image.sh cloud0:ci
 set -euo pipefail
@@ -12,7 +13,8 @@ URL="http://127.0.0.1:${PORT}/api/v1"
 WEEK=2026-W20
 NOTE="smoke test $(date -u +%Y%m%dT%H%M%SZ)"
 PASSWORD="smoke-$$-$RANDOM"
-AUTH="cloud0:${PASSWORD}"
+AUTH=":${PASSWORD}"  # HTTP Basic for scripts: there is no username
+SITE="http://127.0.0.1:${PORT}"
 REPLICA="$(mktemp -d)"
 chmod 777 "$REPLICA"  # the image runs as uid 65532
 LOGS="$(mktemp -d)"
@@ -59,12 +61,17 @@ stop() {
 
 echo "1. first start: no replica yet, fresh database"
 start
+fail() { echo "$1" >&2; exit 1; }
 code="$(curl -s -m 10 -o /dev/null -w '%{http_code}' "${URL}/health")"
-if [ "$code" != 401 ]; then
-  echo "a request without the password got $code, want 401" >&2
-  exit 1
-fi
-echo "   without the password: 401"
+[ "$code" = 401 ] || fail "an API call without the password got $code, want 401"
+page="$(curl -s -m 10 -o /dev/null -w '%{http_code} %{redirect_url}' "${SITE}/")"
+[ "$page" = "303 ${SITE}/login?next=%2F" ] || fail "a page without the password got '$page', want 303 to /login"
+curl -fs -m 10 "${SITE}/login" | grep -q 'Sign in' || fail "the /login page did not render"
+JAR="$(mktemp)"
+curl -fsS -m 10 -c "$JAR" -X POST -d "{\"password\":\"${PASSWORD}\"}" "${URL}/login" >/dev/null
+code="$(curl -s -m 10 -b "$JAR" -o /dev/null -w '%{http_code}' "${URL}/health")"
+[ "$code" = 200 ] || fail "the session from /api/v1/login got $code, want 200"
+echo "   password: API 401, page -> /login, signing in gives a working session"
 curl -fsS -m 10 -u "$AUTH" -X PUT -H 'Content-Type: application/json' \
   -d "{\"body\":\"${NOTE}\"}" "${URL}/annotations/${WEEK}" >/dev/null
 echo "   wrote the ${WEEK} note; stopping right away so only the shutdown grace period can save it"

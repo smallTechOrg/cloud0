@@ -63,7 +63,7 @@ func NewHandler(deps Deps) http.Handler {
 	mux.Handle("/", deps.UI)
 	var h http.Handler = mux
 	if deps.Config.Password != "" {
-		h = requirePassword(deps.Config.Password, h)
+		h = newPasswordGate(deps.Config.Password, deps.now).wrap(h)
 	}
 	return logging.Requests(deps.Logger)(h)
 }

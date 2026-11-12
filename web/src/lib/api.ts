@@ -51,6 +51,7 @@ import type {
   SnapshotProvenance,
   WeekID,
 } from './types';
+import { loginUrl } from './login';
 
 export type { AppConfig, Health, WeekID } from './types';
 
@@ -74,6 +75,9 @@ export class ApiError extends Error {
 export const API_BASE = '/api/v1';
 
 export const UNREACHABLE_CODE = 'unreachable';
+
+/** Code of the 401 the API answers when CLOUD0_PASSWORD is set and there is no session. */
+export const UNAUTHORIZED_CODE = 'unauthorized';
 
 function isErrorEnvelope(v: unknown): v is ErrorEnvelope {
   if (typeof v !== 'object' || v === null || !('error' in v)) return false;
@@ -122,6 +126,10 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (!res.ok) {
     if (isErrorEnvelope(body)) {
+      // The session ended (or never started): go and sign in, then come back here.
+      if (res.status === 401 && body.error.code === UNAUTHORIZED_CODE && typeof window !== 'undefined') {
+        window.location.assign(loginUrl(window.location));
+      }
       throw new ApiError(res.status, body.error.code, body.error.message, body.error.hint ?? null, requestId);
     }
     throw new ApiError(res.status, 'http_error', `Request failed with status ${res.status}.`, null, requestId);
@@ -143,6 +151,11 @@ function query(params: Record<string, string | number | undefined>): string {
 }
 
 // ---- Endpoints (one function per spec/api.md entry) -------------------------
+
+/** Signs in with CLOUD0_PASSWORD; the server sets the session cookie. */
+export function postLogin(password: string): Promise<{ ok: true }> {
+  return request<{ ok: true }>('/login', jsonInit('POST', { password }));
+}
 
 export function getHealth(): Promise<Health> {
   return request<Health>('/health');

@@ -176,4 +176,4 @@ fi
 
 echo
 echo "Done. Deploy by pushing to main or the v0.1 feature branch, or: gh workflow run deploy-cloudrun.yml -R $GH_REPO --ref <branch>"
-echo "Then open the service URL and sign in with any username and the CLOUD0_PASSWORD value."
+echo "Then open the service URL and sign in with the CLOUD0_PASSWORD value."

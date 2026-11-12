@@ -9,8 +9,9 @@
 # CLOUD0_GCP_PROJECTS, CLOUD0_BIGQUERY_PROJECT, CLOUD0_BILLING_EXPORT_TABLE, CLOUD0_PASSWORD, and optionally
 # CLOUD0_BILLING_ACCOUNT_ID, CLOUD0_OPENROUTER_API_KEY.
 #
-# The URL is public and CLOUD0_PASSWORD guards every page and API call (HTTP Basic auth, any username). The deploy
-# refuses to run without it, and the health check confirms a request without it is turned away.
+# The URL is public and CLOUD0_PASSWORD guards every page and API call (browsers sign in on /login; this workflow
+# uses HTTP Basic auth with no username). The deploy refuses to run without it, and the health check confirms a
+# request without it is turned away.
 # SQLite lives on the instance and is restored from / streamed to gs://<PROJECT_ID>-cloud0-data by Litestream,
 # which is why the service is capped at one instance.
 name: deploy-cloud-run
@@ -161,14 +162,14 @@ jobs:
           fi
           BODY="$(mktemp)"; HDRS="$(mktemp)"
           check() { local path="$1"; shift; curl -s -m 60 -o "$BODY" -D "$HDRS" -w '%{http_code}' "$@" "${URL}${path}" || true; }
-          # cloud0's own 401 carries its Basic challenge; Google's front end answers 401/403 without it.
-          from_cloud0() { grep -qi '^www-authenticate: Basic realm="cloud0"' "$HDRS"; }
+          # cloud0's own 401 is its JSON envelope; Google's front end answers 401/403 with an HTML page.
+          from_cloud0() { jq -e '.error.code == "unauthorized" or .error.code == "invalid_password"' "$BODY" >/dev/null 2>&1; }
 
           # Making the service public can take a minute or two to apply: until then the front end still expects a
           # Google token and turns the request away before cloud0 sees it. Wait that out (and a starting instance);
           # anything cloud0 itself answers other than 200 is a real failure.
           for i in $(seq 1 24); do
-            code="$(check "$HEALTH_PATH" -u "cloud0:${CLOUD0_PASSWORD}")"
+            code="$(check "$HEALTH_PATH" -u ":${CLOUD0_PASSWORD}")"
             case "$code" in
               200) break ;;
               401) if from_cloud0; then echo "::error::cloud0 rejected the CLOUD0_PASSWORD secret"; exit 1; fi ;;

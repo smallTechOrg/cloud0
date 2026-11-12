@@ -66,8 +66,9 @@ type Config struct {
 	LLMModel         string
 
 	// Password (CLOUD0_PASSWORD), when set, puts every page and API call
-	// behind HTTP Basic auth: any username, this password. Unset = no login,
-	// for local use. A secret: never printed; Redacted() reports only set/unset.
+	// behind it: browsers sign in on /login, scripts may use HTTP Basic auth
+	// with no username. Unset = no login, for local use. A secret: never
+	// printed; Redacted() reports only set/unset.
 	Password string
 
 	// Test-only knobs, read here so every variable has one home.
