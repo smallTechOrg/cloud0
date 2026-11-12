@@ -147,6 +147,16 @@ func TempDB(t testing.TB) string {
 	return base + sep + "search_path=" + schema
 }
 
+// DBEnv is the environment entry that points a cloud0 child process at a
+// TempDB target: CLOUD0_DATABASE_URL for a Postgres schema, CLOUD0_DB_PATH
+// for a SQLite file.
+func DBEnv(target string) string {
+	if Postgres() {
+		return "CLOUD0_DATABASE_URL=" + target
+	}
+	return "CLOUD0_DB_PATH=" + target
+}
+
 // FreePort asks the OS for an unused TCP port on 127.0.0.1.
 func FreePort(t testing.TB) int {
 	t.Helper()

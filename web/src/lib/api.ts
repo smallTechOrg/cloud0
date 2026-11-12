@@ -77,7 +77,7 @@ export const API_BASE = '/api/v1';
 export const UNREACHABLE_CODE = 'unreachable';
 
 /** Code of the 401 the API answers when CLOUD0_PASSWORD is set and there is no session. */
-export const UNAUTHORIZED_CODE = 'unauthorized';
+const UNAUTHORIZED_CODE = 'unauthorized';
 
 function isErrorEnvelope(v: unknown): v is ErrorEnvelope {
   if (typeof v !== 'object' || v === null || !('error' in v)) return false;

@@ -21,17 +21,32 @@ import (
 const (
 	sessionCookie = "cloud0_session"
 	sessionTTL    = 30 * 24 * time.Hour
+	// failDelay slows every wrong password (sign-in or Basic auth). It only
+	// throttles naive guessing; the real defence is a long random password,
+	// as provision.sh and the README ask for.
+	failDelay = time.Second
 )
 
 type passwordGate struct {
-	want [32]byte // sha256 of the password: compared in constant time whatever the lengths
-	key  []byte   // signs session cookies; derived from the password, so changing it signs everyone out
-	now  func() time.Time
+	want      [32]byte // sha256 of the password: compared in constant time whatever the lengths
+	key       []byte   // signs session cookies; derived from the password, so changing it signs everyone out
+	now       func() time.Time
+	failDelay time.Duration
 }
 
 func newPasswordGate(password string, now func() time.Time) *passwordGate {
 	key := sha256.Sum256([]byte("cloud0 session key\x00" + password))
-	return &passwordGate{want: sha256.Sum256([]byte(password)), key: key[:], now: now}
+	return &passwordGate{want: sha256.Sum256([]byte(password)), key: key[:], now: now, failDelay: failDelay}
+}
+
+// slowDown waits out failDelay after a wrong password, or until the client goes away.
+func (g *passwordGate) slowDown(r *http.Request) {
+	t := time.NewTimer(g.failDelay)
+	defer t.Stop()
+	select {
+	case <-t.C:
+	case <-r.Context().Done():
+	}
 }
 
 func (g *passwordGate) matches(got string) bool {
@@ -67,9 +82,18 @@ func (g *passwordGate) validSession(r *http.Request) bool {
 	return hmac.Equal([]byte(sig), []byte(g.sign(exp)))
 }
 
+// basicOK reports whether the request carries the password with HTTP Basic
+// auth; a wrong one is slowed down like a failed sign-in.
 func (g *passwordGate) basicOK(r *http.Request) bool {
 	_, pass, ok := r.BasicAuth()
-	return ok && g.matches(pass)
+	if !ok {
+		return false
+	}
+	if g.matches(pass) {
+		return true
+	}
+	g.slowDown(r)
+	return false
 }
 
 // public is what the sign-in page itself needs: the page, its RSC payload
@@ -119,6 +143,7 @@ func (g *passwordGate) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !g.matches(*body.Password) {
+		g.slowDown(r)
 		e := &APIError{Status: http.StatusUnauthorized, Code: "invalid_password", Message: "That password is not right."}
 		writeError(w, r, nil, e.WithHint("Check the CLOUD0_PASSWORD value and try again."))
 		return

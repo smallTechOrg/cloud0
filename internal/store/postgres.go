@@ -8,6 +8,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
+
+	"github.com/smallTechOrg/cloud0/internal/config"
 )
 
 // Postgres support (CLOUD0_DATABASE_URL). Every query in this package is
@@ -15,16 +17,10 @@ import (
 // the connector below rewrites "?" to "$1, $2, …" on the way to pgx, so
 // repositories, callers and their transactions need no dialect switches.
 
-// IsPostgresURL reports whether target is a Postgres connection URL rather
-// than a SQLite file path.
-func IsPostgresURL(target string) bool {
-	return strings.HasPrefix(target, "postgres://") || strings.HasPrefix(target, "postgresql://")
-}
-
 // Redact hides the password of a Postgres URL (file paths come back as is),
 // for logs and `cloud0 migrate` output.
 func Redact(target string) string {
-	if !IsPostgresURL(target) {
+	if !config.IsPostgresURL(target) {
 		return target
 	}
 	cfg, err := pgx.ParseConfig(target)

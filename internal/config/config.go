@@ -149,8 +149,12 @@ func Load(getenv func(string) string) (Config, error) {
 	if cfg.DBPath == "" {
 		cfg.DBPath = DefaultDBPath
 	}
+	if IsPostgresURL(cfg.DBPath) {
+		// It would work (store.Open accepts either), but DBPath is logged as is, password included.
+		errs = append(errs, &ValidationError{"CLOUD0_DB_PATH", "is a SQLite file path; put a Postgres URL in CLOUD0_DATABASE_URL instead"})
+	}
 	cfg.DatabaseURL = get("CLOUD0_DATABASE_URL")
-	if cfg.DatabaseURL != "" && !strings.HasPrefix(cfg.DatabaseURL, "postgres://") && !strings.HasPrefix(cfg.DatabaseURL, "postgresql://") {
+	if cfg.DatabaseURL != "" && !IsPostgresURL(cfg.DatabaseURL) {
 		errs = append(errs, &ValidationError{"CLOUD0_DATABASE_URL", "must be a Postgres URL (postgres://user:password@host:5432/db?sslmode=require), or unset to use CLOUD0_DB_PATH"})
 	}
 
@@ -250,6 +254,12 @@ func (c Config) Redacted() map[string]any {
 		"log_level":             c.LogLevel,
 		"currency":              c.Currency,
 	}
+}
+
+// IsPostgresURL reports whether s is a Postgres connection URL (what
+// CLOUD0_DATABASE_URL holds) rather than a SQLite file path.
+func IsPostgresURL(s string) bool {
+	return strings.HasPrefix(s, "postgres://") || strings.HasPrefix(s, "postgresql://")
 }
 
 // DatabaseTarget is what store.Open opens: the Postgres URL when

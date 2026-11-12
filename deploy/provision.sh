@@ -34,6 +34,8 @@ SQL_INSTANCE="${SQL_INSTANCE:-ai-agent-db}"
 DB_NAME=cloud0
 DB_USER=cloud0_app
 DBINIT_JOB=cloud0-dbinit
+# The only branches allowed to deploy (keep in step with `on.push.branches` in deploy-cloudrun.yml).
+DEPLOY_REFS="${DEPLOY_REFS:-refs/heads/main refs/heads/feature/cloud0-20261026-1851-v0.1}"
 
 ALERTS_KEY=""
 while [ $# -gt 0 ]; do
@@ -50,6 +52,12 @@ granted() { echo "GRANTED $1"; }
 die()     { echo "ERROR   $1" >&2; exit 1; }
 # New service accounts take a few seconds to become visible to IAM.
 retry()   { for _ in 1 2 3 4 5 6; do "$@" >/dev/null 2>&1 && return 0; sleep 5; done; "$@" >/dev/null; }
+# put NAME VALUE sets a GitHub repository secret (value on stdin, never printed).
+put() {
+  if [ -z "$2" ]; then echo "SKIPPED $1 (not set)"; return 0; fi
+  printf '%s' "$2" | gh secret set "$1" -R "$GH_REPO"
+  echo "SET     $1"
+}
 
 # Value of an env var, else of the same key in ./.env.
 setting() {
@@ -120,8 +128,15 @@ if gcloud sql users list --instance "$SQL_INSTANCE" "${G[@]}" --format='value(na
 else
   # 32 random URL-safe base64 chars; the fixed tail meets Cloud SQL's policy (lower, upper, digit, symbol) every time.
   DB_PASSWORD="$(head -c 24 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')Aa1-"
-  gcloud sql users create "$DB_USER" --instance "$SQL_INSTANCE" --password "$DB_PASSWORD" "${G[@]}" >/dev/null
+  # --password=… : the value may start with '-', which gcloud would read as a flag.
+  gcloud sql users create "$DB_USER" --instance "$SQL_INSTANCE" --password="$DB_PASSWORD" "${G[@]}" >/dev/null
   created "sql-user $DB_USER"
+  # Store the URL right away: the password exists nowhere else, and a later failure must not lose it. The copy in
+  # .env.cloudrun (gitignored, not read by cloud0) sits next to CLOUD0_PASSWORD's.
+  DATABASE_URL="postgres://${DB_USER}:${DB_PASSWORD}@${SQL_IP}:5432/${DB_NAME}?sslmode=require"
+  printf 'CLOUD0_DATABASE_URL=%s\n' "$DATABASE_URL" >> .env.cloudrun
+  echo "SAVED   CLOUD0_DATABASE_URL to .env.cloudrun"
+  put CLOUD0_DATABASE_URL "$DATABASE_URL"
 fi
 if gcloud sql databases list --instance "$SQL_INSTANCE" "${G[@]}" --format='value(name)' | grep -qx "$DB_NAME"; then
   exists "database $DB_NAME"
@@ -142,10 +157,6 @@ else
   gcloud run jobs delete "$DBINIT_JOB" --region "$REGION" --quiet "${G[@]}" >/dev/null
   created "database $DB_NAME (owner $DB_USER)"
 fi
-DATABASE_URL=""
-if [ -n "$DB_PASSWORD" ]; then
-  DATABASE_URL="postgres://${DB_USER}:${DB_PASSWORD}@${SQL_IP}:5432/${DB_NAME}?sslmode=require"
-fi
 
 echo "== Workload Identity Federation"
 if gcloud iam workload-identity-pools describe "$WIF_POOL" --location global "${G[@]}" >/dev/null 2>&1; then
@@ -154,17 +165,22 @@ else
   gcloud iam workload-identity-pools create "$WIF_POOL" --location global --display-name "GitHub Actions" "${G[@]}"
   created "pool $WIF_POOL"
 fi
+# Only push / workflow_dispatch runs of this repo, on the deploy branches, may impersonate the shared deployer.
+REFS_CEL="$(printf "'%s', " $DEPLOY_REFS)"
+CONDITION="assertion.repository=='${GH_REPO}' && (assertion.event_name=='push' || assertion.event_name=='workflow_dispatch') && assertion.ref in [${REFS_CEL%, }]"
 if gcloud iam workload-identity-pools providers describe "$WIF_PROVIDER" --location global \
      --workload-identity-pool "$WIF_POOL" "${G[@]}" >/dev/null 2>&1; then
-  exists "provider $WIF_PROVIDER"
+  gcloud iam workload-identity-pools providers update-oidc "$WIF_PROVIDER" --location global \
+    --workload-identity-pool "$WIF_POOL" --attribute-condition "$CONDITION" "${G[@]}" >/dev/null
+  exists "provider $WIF_PROVIDER (condition set: $GH_REPO push / workflow_dispatch on $DEPLOY_REFS)"
 else
   gcloud iam workload-identity-pools providers create-oidc "$WIF_PROVIDER" --location global \
     --workload-identity-pool "$WIF_POOL" --display-name "cloud0 GitHub" \
     --issuer-uri https://token.actions.githubusercontent.com \
     --attribute-mapping "google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref" \
-    --attribute-condition "assertion.repository=='${GH_REPO}' && (assertion.event_name=='push' || assertion.event_name=='workflow_dispatch')" \
+    --attribute-condition "$CONDITION" \
     "${G[@]}"
-  created "provider $WIF_PROVIDER (only $GH_REPO push / workflow_dispatch runs)"
+  created "provider $WIF_PROVIDER ($GH_REPO push / workflow_dispatch on $DEPLOY_REFS)"
 fi
 retry gcloud iam service-accounts add-iam-policy-binding "$DEPLOY_SA" --role roles/iam.workloadIdentityUser \
   --member "principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${WIF_POOL}/attribute.repository/${GH_REPO}" \
@@ -191,26 +207,13 @@ if [ -n "$ALERTS_KEY" ]; then
 fi
 
 echo "== GitHub repository secrets ($GH_REPO)"
-put() {
-  if [ -z "$2" ]; then echo "SKIPPED $1 (not set)"; return 0; fi
-  printf '%s' "$2" | gh secret set "$1" -R "$GH_REPO"
-  echo "SET     $1"
-}
 put GCP_PROJECT_ID "$PROJECT"
 put GCP_PROJECT_NUMBER "$PROJECT_NUMBER"
 for k in CLOUD0_GCP_PROJECTS CLOUD0_BIGQUERY_PROJECT CLOUD0_BILLING_EXPORT_TABLE CLOUD0_BILLING_ACCOUNT_ID CLOUD0_OPENROUTER_API_KEY; do
   put "$k" "$(setting "$k")"
 done
 put CLOUD0_PASSWORD "${CLOUD0_PASSWORD:-}"
-if [ -n "$DATABASE_URL" ]; then
-  put CLOUD0_DATABASE_URL "$DATABASE_URL"
-  # The password exists nowhere else: keep a copy next to CLOUD0_PASSWORD's (.env.cloudrun is gitignored and is
-  # not read by cloud0).
-  printf 'CLOUD0_DATABASE_URL=%s\n' "$DATABASE_URL" >> .env.cloudrun
-  echo "SAVED   CLOUD0_DATABASE_URL to .env.cloudrun"
-else
-  echo "SKIPPED CLOUD0_DATABASE_URL ($DB_USER already existed; the secret keeps its current value)"
-fi
+# CLOUD0_DATABASE_URL was set above when the database user was created; it keeps its value on re-runs.
 if [ -z "${CLOUD0_PASSWORD:-}" ] && ! gh secret list -R "$GH_REPO" | grep -q '^CLOUD0_PASSWORD\b'; then
   echo "NOTE    the deploy needs CLOUD0_PASSWORD: gh secret set CLOUD0_PASSWORD -R $GH_REPO"
 fi

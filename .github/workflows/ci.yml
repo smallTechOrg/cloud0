@@ -5,10 +5,16 @@ name: CI
 #   test  -> web typecheck + Vitest + static export embedded into the binary (as `make web-build`), go vet, Go tests
 #            on SQLite (local use) and again on Postgres 17 (Cloud Run uses Cloud SQL Postgres 17)
 #   image -> builds the deployable image and smoke-tests it against Postgres: migrate up, sign-in, data kept
+#            (skipped when deploy-cloud-run calls this: the deploy job smoke-tests the very image it pushes)
 
 on:
   pull_request:
   workflow_call:
+    inputs:
+      image:
+        description: Build and smoke-test the image
+        type: boolean
+        default: true
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -70,6 +76,7 @@ jobs:
 
   image:
     name: Cloud Run image
+    if: ${{ inputs.image != false }}  # pull_request has no inputs: always runs
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:

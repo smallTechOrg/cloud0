@@ -138,6 +138,8 @@ func TestLoad_RejectsInvalidValues(t *testing.T) {
 		{"currency digits", "CLOUD0_CURRENCY", "I2R"},
 		{"currency symbol", "CLOUD0_CURRENCY", "₹"},
 		{"e2e port bad", "CLOUD0_E2E_PORT", "99999"},
+		{"database URL not Postgres", "CLOUD0_DATABASE_URL", "mysql://u:p@h/db"},
+		{"Postgres URL in the SQLite path", "CLOUD0_DB_PATH", "postgres://u:placeholder@h:5432/db"},
 	}
 	for _, c := range cases {
 		m := minimal()

@@ -20,6 +20,8 @@ import (
 
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite" // registers the cgo-free "sqlite" driver
+
+	"github.com/smallTechOrg/cloud0/internal/config"
 )
 
 //go:embed migrations/*.sql migrations_postgres/*.sql
@@ -45,7 +47,7 @@ type MigrationInfo struct {
 // path, whose parent directory is created if needed and which is opened with
 // WAL journaling, a 5 s busy timeout and foreign keys enforced.
 func Open(ctx context.Context, target string) (*Store, error) {
-	if IsPostgresURL(target) {
+	if config.IsPostgresURL(target) {
 		return openPostgres(ctx, target)
 	}
 	path := target

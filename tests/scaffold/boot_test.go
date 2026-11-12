@@ -46,7 +46,7 @@ func childEnv(dbPath string, port int) []string {
 	for _, kv := range os.Environ() {
 		k := strings.SplitN(kv, "=", 2)[0]
 		switch k {
-		case "CLOUD0_PORT", "CLOUD0_DB_PATH", "CLOUD0_BIND", "PORT":
+		case "CLOUD0_PORT", "CLOUD0_DB_PATH", "CLOUD0_DATABASE_URL", "CLOUD0_BIND", "PORT":
 			continue
 		}
 		env = append(env, kv)
@@ -57,7 +57,7 @@ func childEnv(dbPath string, port int) []string {
 		}
 	}
 	env = append(env,
-		"CLOUD0_DB_PATH="+dbPath,
+		testenv.DBEnv(dbPath),
 		"CLOUD0_PORT="+strconv.Itoa(port),
 		"CLOUD0_BIND=127.0.0.1",
 		"GO111MODULE=on", "GOTOOLCHAIN=local",
@@ -336,7 +336,7 @@ func TestBoot_ServeExits2OnMissingRequiredConfig(t *testing.T) {
 
 	cmd := exec.Command(bin, "serve")
 	cmd.Dir = t.TempDir() // no .env here
-	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + os.Getenv("HOME"), "CLOUD0_DB_PATH=" + testenv.TempDB(t)}
+	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + os.Getenv("HOME"), testenv.DBEnv(testenv.TempDB(t))}
 	out, err := cmd.CombinedOutput()
 	exitErr, ok := err.(*exec.ExitError)
 	if !ok || exitErr.ExitCode() != 2 {

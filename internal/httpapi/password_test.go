@@ -20,8 +20,11 @@ var gateNow = time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC)
 // passThrough marks requests the gate let through.
 var passThrough = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusTeapot) })
 
+// gateAt is the gate at a fixed time, without the wrong-password delay.
 func gateAt(password string, now time.Time) http.Handler {
-	return newPasswordGate(password, func() time.Time { return now }).wrap(passThrough)
+	g := newPasswordGate(password, func() time.Time { return now })
+	g.failDelay = 0
+	return g.wrap(passThrough)
 }
 
 func serve(h http.Handler, req *http.Request) *httptest.ResponseRecorder {
@@ -188,6 +191,33 @@ func TestPasswordGate_BasicAuthIgnoresTheUsername(t *testing.T) {
 		if rec := serve(h, req); rec.Code != c.want {
 			t.Errorf("basic %q:%q = %d, want %d", c.user, c.pass, rec.Code, c.want)
 		}
+	}
+}
+
+func TestPasswordGate_WrongPasswordsAreSlowedDown(t *testing.T) {
+	g := newPasswordGate(testPassword, func() time.Time { return gateNow })
+	g.failDelay = 50 * time.Millisecond
+	h := g.wrap(passThrough)
+
+	basic := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
+	basic.SetBasicAuth("", "wrong")
+	for name, req := range map[string]*http.Request{
+		"sign-in": httptest.NewRequest(http.MethodPost, "/api/v1/login", strings.NewReader(`{"password":"wrong"}`)),
+		"basic":   basic,
+	} {
+		start := time.Now()
+		if rec := serve(h, req); rec.Code != http.StatusUnauthorized {
+			t.Fatalf("%s: status = %d, want 401", name, rec.Code)
+		}
+		if d := time.Since(start); d < g.failDelay {
+			t.Errorf("%s: a wrong password answered after %v, want at least %v", name, d, g.failDelay)
+		}
+	}
+
+	start := time.Now()
+	serve(h, httptest.NewRequest(http.MethodGet, "/api/v1/health", nil))
+	if d := time.Since(start); d >= g.failDelay {
+		t.Errorf("no password at all took %v: only wrong passwords should wait", d)
 	}
 }
 

@@ -2,7 +2,7 @@
 
 import { type FormEvent, useState } from 'react';
 import { postLogin, toApiError } from '@/lib/api';
-import { safeNext } from '@/lib/login';
+import { afterLogin } from '@/lib/login';
 import styles from './LoginForm.module.css';
 
 /** The /login card: one password field (there is no username). */
@@ -17,7 +17,7 @@ export function LoginForm() {
     setError(null);
     try {
       await postLogin(password);
-      window.location.replace(safeNext(new URLSearchParams(window.location.search).get('next')));
+      window.location.replace(afterLogin(new URLSearchParams(window.location.search).get('next'), window.location.hash));
     } catch (err) {
       const apiErr = toApiError(err);
       if (apiErr.code === 'not_found') {

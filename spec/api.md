@@ -213,6 +213,7 @@ Off when `CLOUD0_PASSWORD` is unset (local use): nothing below applies and `/api
 
 - **Browsers** sign in on `GET /login` (one password field). It posts to `POST /api/v1/login`, which sets the `cloud0_session` cookie (HttpOnly, SameSite=Lax, Secure over HTTPS, 30 days). The cookie is signed with a key derived from the password, so changing the password signs everyone out.
 - **Scripts** may instead send the password with HTTP Basic auth; the username is ignored (`curl -u :PASSWORD`).
+- **A wrong password** (sign-in or Basic auth) is answered after a 1 s delay, to slow guessing; the password itself should be long and random.
 - **Without either:** a page request answers `303` to `/login?next=<path>`; an API request answers `401 unauthorized` (envelope, hint names both ways in). No `WWW-Authenticate` header is sent, so the browser never shows its own sign-in dialog. `GET /login`, `/login.html` and `/_next/*` (the page and its static assets) are always served.
 
 ### `POST /api/v1/login`

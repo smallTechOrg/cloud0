@@ -3,7 +3,8 @@
 # never deploy to GCP directly from a workstation. deploy/provision.sh sets up everything below once.
 #
 # Auth is keyless: Workload Identity Federation (provider `cloud0-github` in pool `github`, restricted to push and
-# workflow_dispatch runs of this repo) impersonating the shared github-actions-deployer. The service runs as
+# workflow_dispatch runs of this repo on the branches below; DEPLOY_REFS in provision.sh) impersonating the shared
+# github-actions-deployer. The service runs as
 # cloud0-reader.
 # The repo is public, so every identifier comes from repository secrets: GCP_PROJECT_ID, GCP_PROJECT_NUMBER,
 # CLOUD0_GCP_PROJECTS, CLOUD0_BIGQUERY_PROJECT, CLOUD0_BILLING_EXPORT_TABLE, CLOUD0_PASSWORD, CLOUD0_DATABASE_URL,
@@ -32,11 +33,22 @@ permissions: { contents: read, id-token: write }
 jobs:
   ci:
     uses: ./.github/workflows/ci.yml
+    with:
+      image: false  # the deploy job builds, smoke-tests and pushes the image itself
 
   deploy:
     needs: ci
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    services:
+      postgres:  # for the smoke test of the image before it is pushed
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: cloud0
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       REGION: us-central1
       SERVICE: cloud0
@@ -79,13 +91,18 @@ jobs:
           gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
           echo "ref=${REGION}-docker.pkg.dev/${PROJECT}/cloud0/cloud0:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v3
-      - name: Build and push
+      - name: Build the image
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
+          load: true
           tags: ${{ steps.image.outputs.ref }}
           cache-from: type=gha,scope=cloud0
+          cache-to: type=gha,scope=cloud0,mode=max
+      - name: Smoke test it against Postgres
+        run: bash deploy/smoke-image.sh "${{ steps.image.outputs.ref }}" 'postgres://postgres:postgres@127.0.0.1:5432/cloud0?sslmode=disable'
+      - name: Push the tested image
+        run: docker push "${{ steps.image.outputs.ref }}"
 
       - name: Previous serving revision (for the rollback guard)
         run: |
