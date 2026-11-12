@@ -76,7 +76,8 @@ jobs:
 
   image:
     name: Cloud Run image
-    if: ${{ inputs.image != false }}  # pull_request has no inputs: always runs
+    # Always on PRs (no inputs there; null == false in expressions), else as the caller asks.
+    if: ${{ github.event_name == 'pull_request' || inputs.image }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
