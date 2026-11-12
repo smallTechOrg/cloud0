@@ -317,7 +317,7 @@ Deployments go only through GitHub Actions; never deploy from a workstation.
 | Workflow | When | What |
 |---|---|---|
 | `ci.yml` | every PR | web typecheck, Vitest, static export; `go vet`; Go tests (real-BigQuery tests skip: no credentials in CI); builds the Cloud Run image and checks, with a password set, that a request without it gets `401` and that a week note survives a container restart through its Litestream replica |
-| `deploy-cloudrun.yml` | push to `main` or the v0.1 feature branch, or by hand (Actions → deploy-cloud-run → Run workflow) | CI, then build and push the image, deploy the `cloud0` service, health-check `/api/v1/health` with the password and confirm it answers `401` without it |
+| `deploy-cloudrun.yml` | push to `main` or the v0.1 feature branch, or by hand (Actions → deploy-cloud-run → Run workflow) | CI, then build and push the image, deploy the `cloud0` service as revision `cloud0-sha-<commit>`, health-check `/api/v1/health` with the password and confirm it answers `401` without it; if any of that fails, traffic goes back to the previous revision. Running it by hand with **drill_rollback** probes a path that 404s, to prove the rollback works. |
 
 **One-time setup.** Run it once as a project owner, with `gcloud auth login` and `gh auth login` done and `.env` filled in. Re-running it creates only what is missing. It never deploys.
 

@@ -19,7 +19,12 @@ on:
     # TEMPORARY: ci/cloud-run-deploy deploys too, to try the pipeline from PR #2; remove it before merging.
     branches: [main, feature/cloud0-20261026-1851-v0.1, ci/cloud-run-deploy]
     paths-ignore: ["spec/**", "*.md"]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      drill_rollback:
+        description: "Drill: health-check a path that 404s so the rollback guard fires"
+        type: boolean
+        default: false
 concurrency: { group: cloud-run, cancel-in-progress: false }
 permissions: { contents: read, id-token: write }
 jobs:
@@ -36,6 +41,7 @@ jobs:
       PROJECT: ${{ secrets.GCP_PROJECT_ID }}
       WORKLOAD_IDENTITY_PROVIDER: projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github/providers/cloud0-github
       DEPLOY_SERVICE_ACCOUNT: github-actions-deployer@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+      DRILL_ROLLBACK: ${{ inputs.drill_rollback }}
     steps:
       - name: Check repository secrets
         env:
@@ -79,6 +85,13 @@ jobs:
           tags: ${{ steps.image.outputs.ref }}
           cache-from: type=gha,scope=cloudrun
 
+      - name: Previous serving revision (for the rollback guard)
+        run: |
+          PREV="$(gcloud run services describe "$SERVICE" --region "$REGION" --format=json 2>/dev/null \
+            | jq -r '[.status.traffic[]? | select((.percent // 0) > 0 and .revisionName)][0].revisionName // empty' || true)"
+          echo "Previous revision: ${PREV:-<none, first deploy>}"
+          echo "PREV=${PREV}" >> "$GITHUB_ENV"
+
       - name: Deploy
         id: deploy
         env:
@@ -113,6 +126,14 @@ jobs:
           open(sys.argv[1], "w").write("".join(f"{k}: {json.dumps(v)}\n" for k, v in env.items()))
           PY
 
+          # Revisions are named after the commit; a re-run of the same commit (e.g. a drill) must not collide.
+          SUFFIX="sha-${GITHUB_SHA::7}"
+          if gcloud run revisions list --service "$SERVICE" --region "$REGION" --format='value(metadata.name)' 2>/dev/null \
+               | grep -qx "${SERVICE}-${SUFFIX}"; then
+            SUFFIX="${SUFFIX}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          fi
+          echo "NEW_REVISION=${SERVICE}-${SUFFIX}" >> "$GITHUB_ENV"
+
           # One instance at most: two would each restore and replicate the same SQLite file. Request-based billing
           # is required by org policy (custom.denyInstanceBilling), so Litestream pushes changes while requests run
           # and on shutdown (Cloud Run gives CPU after SIGTERM); only a hard crash in between can lose a write.
@@ -120,8 +141,10 @@ jobs:
             --service-account "cloud0-reader@${PROJECT}.iam.gserviceaccount.com" \
             --allow-unauthenticated --port 8087 --execution-environment gen2 \
             --cpu 1 --memory 512Mi --min-instances 0 --max-instances 1 --cpu-throttling --no-cpu-boost \
-            --concurrency 80 --timeout 900 \
+            --concurrency 80 --timeout 900 --revision-suffix "$SUFFIX" \
             --env-vars-file "$ENV_FILE" "${SECRET_FLAGS[@]}" --quiet
+          # After a rollback, traffic stays pinned to the old revision; send it to this one.
+          gcloud run services update-traffic "$SERVICE" --region "$REGION" --to-latest --quiet
 
           echo "url=$(gcloud run services describe "$SERVICE" --region "$REGION" --format 'value(status.url)')" >> "$GITHUB_OUTPUT"
 
@@ -130,27 +153,48 @@ jobs:
           URL: ${{ steps.deploy.outputs.url }}
           CLOUD0_PASSWORD: ${{ secrets.CLOUD0_PASSWORD }}
         run: |
+          set -uo pipefail
+          HEALTH_PATH=/api/v1/health
+          if [ "${DRILL_ROLLBACK:-false}" = true ]; then
+            HEALTH_PATH=/api/v1/health-drill-404
+            echo "::warning::DRILL: probing ${HEALTH_PATH}; this run is expected to fail and roll back."
+          fi
           BODY="$(mktemp)"; HDRS="$(mktemp)"
-          check() { curl -s -m 60 -o "$BODY" -D "$HDRS" -w '%{http_code}' "$@" "${URL}/api/v1/health" || true; }
+          check() { local path="$1"; shift; curl -s -m 60 -o "$BODY" -D "$HDRS" -w '%{http_code}' "$@" "${URL}${path}" || true; }
           # cloud0's own 401 carries its Basic challenge; Google's front end answers 401/403 without it.
           from_cloud0() { grep -qi '^www-authenticate: Basic realm="cloud0"' "$HDRS"; }
 
           # Making the service public can take a minute or two to apply: until then the front end still expects a
-          # Google token and turns the request away before cloud0 sees it. Wait that out; cloud0 itself rejecting
-          # the password is a real failure.
+          # Google token and turns the request away before cloud0 sees it. Wait that out (and a starting instance);
+          # anything cloud0 itself answers other than 200 is a real failure.
           for i in $(seq 1 24); do
-            code="$(check -u "cloud0:${CLOUD0_PASSWORD}")"
-            [ "$code" = 200 ] && break
-            if [ "$code" = 401 ] && from_cloud0; then echo "::error::cloud0 rejected the CLOUD0_PASSWORD secret"; exit 1; fi
-            echo "attempt $i: $code from the front end (service or its public access not ready yet)"
+            code="$(check "$HEALTH_PATH" -u "cloud0:${CLOUD0_PASSWORD}")"
+            case "$code" in
+              200) break ;;
+              401) if from_cloud0; then echo "::error::cloud0 rejected the CLOUD0_PASSWORD secret"; exit 1; fi ;;
+              403|000|5??) ;;
+              *) echo "::error::${HEALTH_PATH} answered ${code}: $(head -c 300 "$BODY")"; exit 1 ;;
+            esac
+            echo "attempt $i: $code (service or its public access not ready yet)"
             sleep 10
           done
-          [ "$code" = 200 ] || { echo "health check failed"; exit 1; }
+          [ "$code" = 200 ] || { echo "::error::health check failed (last status $code)"; exit 1; }
           echo "healthy: $(jq -c '{ok, version, db, migrations, ui, bigquery: .bigquery.status}' "$BODY")"
 
           # The URL is public: make sure cloud0's password really guards it.
-          code="$(check)"
+          code="$(check "$HEALTH_PATH")"
           if [ "$code" != 401 ] || ! from_cloud0; then
             echo "::error::A request without the password got $code, want cloud0's 401"; exit 1
           fi
           echo "without the password: cloud0 answers 401 as expected"
+
+          serving="$(gcloud run services describe "$SERVICE" --region "$REGION" --format=json \
+            | jq -r '[.status.traffic[] | select((.percent // 0) > 0)][0].revisionName')"
+          [ "$serving" = "$NEW_REVISION" ] || { echo "::error::serving $serving, deployed $NEW_REVISION"; exit 1; }
+          echo "serving: $serving"
+
+      - name: Roll back to the previous revision
+        if: failure() && env.PREV != ''
+        run: |
+          echo "::error::Deploy failed: sending all traffic back to ${PREV}"
+          gcloud run services update-traffic "$SERVICE" --region "$REGION" --to-revisions "${PREV}=100" --quiet
