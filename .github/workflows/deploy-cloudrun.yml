@@ -12,7 +12,7 @@
 # The service is private (cloud0 has no login): open it with
 #   gcloud run services proxy cloud0 --region us-central1 --project <PROJECT_ID>
 # SQLite lives on the instance and is restored from / streamed to gs://<PROJECT_ID>-cloud0-data by Litestream,
-# which is why the service is capped at one instance and keeps its CPU between requests.
+# which is why the service is capped at one instance.
 name: deploy-cloud-run
 on:
   push:
@@ -111,12 +111,13 @@ jobs:
           open(sys.argv[1], "w").write("".join(f"{k}: {json.dumps(v)}\n" for k, v in env.items()))
           PY
 
-          # One instance at most: two would each restore and replicate the same SQLite file. CPU stays allocated
-          # (--no-cpu-throttling) so Litestream can push changes between requests; it still scales to zero.
+          # One instance at most: two would each restore and replicate the same SQLite file. Request-based billing
+          # is required by org policy (custom.denyInstanceBilling), so Litestream pushes changes while requests run
+          # and on shutdown (Cloud Run gives CPU after SIGTERM); only a hard crash in between can lose a write.
           gcloud run deploy "$SERVICE" --region "$REGION" --image "$IMAGE" \
             --service-account "cloud0-reader@${PROJECT}.iam.gserviceaccount.com" \
             --no-allow-unauthenticated --port 8087 --execution-environment gen2 \
-            --cpu 1 --memory 512Mi --min-instances 0 --max-instances 1 --no-cpu-throttling \
+            --cpu 1 --memory 512Mi --min-instances 0 --max-instances 1 --cpu-throttling --no-cpu-boost \
             --concurrency 80 --timeout 900 \
             --env-vars-file "$ENV_FILE" "${SECRET_FLAGS[@]}" --quiet
 
