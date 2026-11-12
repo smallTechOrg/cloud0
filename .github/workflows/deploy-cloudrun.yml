@@ -130,17 +130,27 @@ jobs:
           URL: ${{ steps.deploy.outputs.url }}
           CLOUD0_PASSWORD: ${{ secrets.CLOUD0_PASSWORD }}
         run: |
-          healthy=""
-          for i in 1 2 3 4 5 6; do
-            if body="$(curl -fsS -m 60 -u "cloud0:${CLOUD0_PASSWORD}" "${URL}/api/v1/health")"; then
-              healthy="$(printf '%s' "$body" | jq -c '{ok, version, db, migrations, ui, bigquery: .bigquery.status}')"
-              break
-            fi
+          BODY="$(mktemp)"; HDRS="$(mktemp)"
+          check() { curl -s -m 60 -o "$BODY" -D "$HDRS" -w '%{http_code}' "$@" "${URL}/api/v1/health" || true; }
+          # cloud0's own 401 carries its Basic challenge; Google's front end answers 401/403 without it.
+          from_cloud0() { grep -qi '^www-authenticate: Basic realm="cloud0"' "$HDRS"; }
+
+          # Making the service public can take a minute or two to apply: until then the front end still expects a
+          # Google token and turns the request away before cloud0 sees it. Wait that out; cloud0 itself rejecting
+          # the password is a real failure.
+          for i in $(seq 1 24); do
+            code="$(check -u "cloud0:${CLOUD0_PASSWORD}")"
+            [ "$code" = 200 ] && break
+            if [ "$code" = 401 ] && from_cloud0; then echo "::error::cloud0 rejected the CLOUD0_PASSWORD secret"; exit 1; fi
+            echo "attempt $i: $code from the front end (service or its public access not ready yet)"
             sleep 10
           done
-          [ -n "$healthy" ] || { echo "health check failed"; exit 1; }
-          echo "healthy: $healthy"
-          # The URL is public: make sure the password really guards it.
-          code="$(curl -s -m 30 -o /dev/null -w '%{http_code}' "${URL}/api/v1/health")"
-          [ "$code" = 401 ] || { echo "::error::A request without the password got $code, want 401"; exit 1; }
-          echo "without the password: 401 as expected"
+          [ "$code" = 200 ] || { echo "health check failed"; exit 1; }
+          echo "healthy: $(jq -c '{ok, version, db, migrations, ui, bigquery: .bigquery.status}' "$BODY")"
+
+          # The URL is public: make sure cloud0's password really guards it.
+          code="$(check)"
+          if [ "$code" != 401 ] || ! from_cloud0; then
+            echo "::error::A request without the password got $code, want cloud0's 401"; exit 1
+          fi
+          echo "without the password: cloud0 answers 401 as expected"

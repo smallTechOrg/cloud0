@@ -67,7 +67,7 @@ fi
 echo "   without the password: 401"
 curl -fsS -m 10 -u "$AUTH" -X PUT -H 'Content-Type: application/json' \
   -d "{\"body\":\"${NOTE}\"}" "${URL}/annotations/${WEEK}" >/dev/null
-echo "   wrote the ${WEEK} note; stopping right away so only the shutdown sync can save it"
+echo "   wrote the ${WEEK} note; stopping right away so only the shutdown grace period can save it"
 stop
 
 echo "2. second start: new container, empty disk, same replica"
