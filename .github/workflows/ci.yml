@@ -1,0 +1,75 @@
+name: CI
+
+# Runs on every PR, and as the first stage of deploy-cloud-run (workflow_call) on pushes.
+# No secrets and no GCP access: tests that need real BigQuery skip here; they run in the local gate (`make gate`).
+#   test  -> web typecheck + Vitest + static export embedded into the binary (as `make web-build`), go vet, Go tests
+#   image -> builds the Cloud Run image and proves data survives a restart through its Litestream replica
+
+on:
+  pull_request:
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions: { contents: read }
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GO111MODULE: "on"
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0  # same pin as the Dockerfile
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Web typecheck, unit tests and static export
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm typecheck
+          pnpm test
+          pnpm build
+      - name: Embed the UI
+        run: |
+          find internal/webui/dist -mindepth 1 -not -name .gitkeep -delete
+          cp -R web/out/. internal/webui/dist/
+          test -f internal/webui/dist/index.html
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"  # matches the Dockerfile's golang:1.23 (GOTOOLCHAIN=local)
+          cache-dependency-path: go.sum
+      - run: go vet ./...
+      - name: Go tests
+        run: |
+          go test ./internal/... -count=1 -timeout 15m
+          go test ./tests/... -count=1 -p 1 -timeout 15m
+
+  image:
+    name: Cloud Run image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the cloudrun target
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: cloudrun
+          load: true
+          tags: cloud0:ci
+          cache-from: type=gha,scope=cloudrun
+          cache-to: type=gha,scope=cloudrun,mode=max
+      - name: Data survives a restart
+        run: bash deploy/smoke-image.sh cloud0:ci

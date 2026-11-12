@@ -294,6 +294,8 @@ internal/testenv       test helpers: .env loading, BigQuery skip rule, temp DB, 
 tests/scaffold         cross-process boot test
 tests/smoke            live smokes (Phase 1 cost refresh; Phase 2 metrics/errors/limits/month; real GCP, real server)
 web/                   Next.js (static export) app, Vitest, Playwright
+deploy/                Cloud Run: one-time provisioning, Litestream entrypoint + config, image smoke test
+.github/workflows/     ci.yml (every PR) and deploy-cloudrun.yml (CI, then deploy to Cloud Run)
 ```
 
 ## Docker (not gated in Phase 1)
@@ -305,4 +307,31 @@ docker run --rm --env-file .env -e CLOUD0_DB_PATH=/data/cloud0.db -v cloud0-data
 docker run --rm --env-file .env -e CLOUD0_DB_PATH=/data/cloud0.db -v cloud0-data:/data -p 8087:8087 cloud0 serve
 ```
 
-The image is multi-stage (node → go → distroless) and binds `0.0.0.0`. Mount the service-account key read-only and point `GOOGLE_APPLICATION_CREDENTIALS` at it; on Cloud Run leave it unset. Docker may be absent locally, so this path is not part of any gate yet.
+The image is multi-stage (node → go → distroless) and binds `0.0.0.0`. Mount the service-account key read-only and point `GOOGLE_APPLICATION_CREDENTIALS` at it; on Cloud Run leave it unset. Docker may be absent locally, so this path is not part of the local gate; CI builds the `cloudrun` target on every PR (below).
+
+## Deploy to Cloud Run (GitHub Actions)
+
+Deployments go only through GitHub Actions; never deploy from a workstation.
+
+| Workflow | When | What |
+|---|---|---|
+| `ci.yml` | every PR | web typecheck, Vitest, static export; `go vet`; Go tests (real-BigQuery tests skip: no credentials in CI); builds the Cloud Run image and checks that a week note survives a container restart through its Litestream replica |
+| `deploy-cloudrun.yml` | push to `main` or the v0.1 feature branch, or by hand (Actions → deploy-cloud-run → Run workflow) | CI, then build and push the image, deploy the `cloud0` service, health-check `/api/v1/health` |
+
+**One-time setup.** Run it once as a project owner, with `gcloud auth login` and `gh auth login` done and `.env` filled in. Re-running it creates only what is missing. It never deploys.
+
+```sh
+# working directory: repo root
+bash deploy/provision.sh                                     # Alerts/Incidents/Budgets read-only on Cloud Run
+bash deploy/provision.sh --alerts-key /path/to/alerts-key.json   # also stores the alerts-writer key so Apply works
+```
+
+It creates the Artifact Registry repo `cloud0`, the bucket `<PROJECT_ID>-cloud0-data`, the `cloud0-deployer` account, and the Workload Identity provider `cloud0-github`, which accepts only this repo's push and workflow_dispatch runs (no GCP keys are stored in GitHub). It also writes the GitHub repository secrets the deploy reads, because the repo is public: `GCP_PROJECT_ID`, `GCP_PROJECT_NUMBER`, `CLOUD0_GCP_PROJECTS`, `CLOUD0_BIGQUERY_PROJECT`, `CLOUD0_BILLING_EXPORT_TABLE`, and, if set, `CLOUD0_BILLING_ACCOUNT_ID` and `CLOUD0_OPENROUTER_API_KEY`. The service runs as the existing read-only `cloud0-reader` (section 10).
+
+**Opening it.** The service is private, because cloud0 has no login. Open it through an authenticated local proxy, then go to http://localhost:8080/:
+
+```sh
+gcloud run services proxy cloud0 --region us-central1 --project <PROJECT_ID>
+```
+
+**Data.** Cloud Run's disk starts empty on every instance. The image's entrypoint (`deploy/entrypoint.sh`) uses Litestream to restore the SQLite file from `gs://<PROJECT_ID>-cloud0-data`, runs `migrate up`, and then streams every change back while serving. For that reason the service is capped at **one instance**, and its CPU stays allocated between requests so that replication keeps running. It still scales to zero when idle. During a deploy the old and new instance overlap for a few seconds, so don't edit notes, rules or targets, or Apply, while a deploy is running.

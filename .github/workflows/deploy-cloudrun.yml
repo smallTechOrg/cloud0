@@ -1,0 +1,146 @@
+# Deploys cloud0 to Cloud Run on every push to main or the v0.1 feature branch, after CI (tests + image smoke) passes.
+# Deployments go only through this workflow (push, or by hand: Actions -> deploy-cloud-run -> "Run workflow");
+# never deploy to GCP directly from a workstation. deploy/provision.sh sets up everything below once.
+#
+# Auth is keyless: Workload Identity Federation (provider `cloud0-github` in pool `github`, restricted to push and
+# workflow_dispatch runs of this repo) impersonating cloud0-deployer. The service runs as cloud0-reader.
+# The repo is public, so every identifier comes from repository secrets: GCP_PROJECT_ID, GCP_PROJECT_NUMBER,
+# CLOUD0_GCP_PROJECTS, CLOUD0_BIGQUERY_PROJECT, CLOUD0_BILLING_EXPORT_TABLE, and optionally
+# CLOUD0_BILLING_ACCOUNT_ID, CLOUD0_OPENROUTER_API_KEY.
+#
+# The service is private (cloud0 has no login): open it with
+#   gcloud run services proxy cloud0 --region us-central1 --project <PROJECT_ID>
+# SQLite lives on the instance and is restored from / streamed to gs://<PROJECT_ID>-cloud0-data by Litestream,
+# which is why the service is capped at one instance and keeps its CPU between requests.
+name: deploy-cloud-run
+on:
+  push:
+    branches: [main, feature/cloud0-20261026-1851-v0.1]
+    paths-ignore: ["spec/**", "*.md"]
+  workflow_dispatch: {}
+concurrency: { group: cloud-run, cancel-in-progress: false }
+permissions: { contents: read, id-token: write }
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      REGION: us-central1
+      SERVICE: cloud0
+      PROJECT: ${{ secrets.GCP_PROJECT_ID }}
+      WORKLOAD_IDENTITY_PROVIDER: projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github/providers/cloud0-github
+      DEPLOY_SERVICE_ACCOUNT: cloud0-deployer@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+    steps:
+      - name: Check repository secrets
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_PROJECT_NUMBER: ${{ secrets.GCP_PROJECT_NUMBER }}
+          CLOUD0_GCP_PROJECTS: ${{ secrets.CLOUD0_GCP_PROJECTS }}
+          CLOUD0_BIGQUERY_PROJECT: ${{ secrets.CLOUD0_BIGQUERY_PROJECT }}
+          CLOUD0_BILLING_EXPORT_TABLE: ${{ secrets.CLOUD0_BILLING_EXPORT_TABLE }}
+        run: |
+          missing=""
+          for k in GCP_PROJECT_ID GCP_PROJECT_NUMBER CLOUD0_GCP_PROJECTS CLOUD0_BIGQUERY_PROJECT CLOUD0_BILLING_EXPORT_TABLE; do
+            [ -n "${!k}" ] || missing="$missing $k"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secrets:$missing. Run deploy/provision.sh once (README -> Deploy to Cloud Run)."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.DEPLOY_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT }}
+
+      - name: Image name
+        id: image
+        run: |
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+          echo "ref=${REGION}-docker.pkg.dev/${PROJECT}/cloud0/cloud0:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: cloudrun
+          push: true
+          tags: ${{ steps.image.outputs.ref }}
+          cache-from: type=gha,scope=cloudrun
+
+      - name: Deploy
+        id: deploy
+        env:
+          IMAGE: ${{ steps.image.outputs.ref }}
+          CLOUD0_GCP_PROJECTS: ${{ secrets.CLOUD0_GCP_PROJECTS }}
+          CLOUD0_BIGQUERY_PROJECT: ${{ secrets.CLOUD0_BIGQUERY_PROJECT }}
+          CLOUD0_BILLING_EXPORT_TABLE: ${{ secrets.CLOUD0_BILLING_EXPORT_TABLE }}
+          CLOUD0_BILLING_ACCOUNT_ID: ${{ secrets.CLOUD0_BILLING_ACCOUNT_ID }}
+          CLOUD0_OPENROUTER_API_KEY: ${{ secrets.CLOUD0_OPENROUTER_API_KEY }}
+        run: |
+          set -euo pipefail
+          export CLOUD0_LITESTREAM_URL="gcs://${PROJECT}-cloud0-data/cloud0.db"
+
+          # Apply (alert policies, budgets) needs the alerts-writer key; it is mounted only when provision.sh stored it.
+          SECRET_FLAGS=()
+          ALERTS_KEY_VERSION="$(gcloud secrets versions list cloud0-alerts-key --filter=state=ENABLED --limit=1 --format='value(name)' 2>/dev/null || true)"
+          if [ -n "$ALERTS_KEY_VERSION" ]; then
+            SECRET_FLAGS=(--update-secrets=/secrets/alerts/key.json=cloud0-alerts-key:latest)
+            export CLOUD0_ALERTS_CREDENTIALS=/secrets/alerts/key.json
+          else
+            echo "::notice::No cloud0-alerts-key secret: Alerts, Incidents and Budgets stay read-only."
+          fi
+
+          # YAML env file (not --set-env-vars): CLOUD0_GCP_PROJECTS holds commas. It replaces every variable each deploy.
+          ENV_FILE="$(mktemp)"; trap 'rm -f "$ENV_FILE"' EXIT
+          python3 - "$ENV_FILE" <<'PY'
+          import json, os, sys
+          env = {k: os.environ[k] for k in ["CLOUD0_GCP_PROJECTS", "CLOUD0_BIGQUERY_PROJECT", "CLOUD0_BILLING_EXPORT_TABLE", "CLOUD0_LITESTREAM_URL"]}
+          env.update({k: os.environ[k] for k in ["CLOUD0_BILLING_ACCOUNT_ID", "CLOUD0_OPENROUTER_API_KEY", "CLOUD0_ALERTS_CREDENTIALS"] if os.environ.get(k)})
+          env.update(CLOUD0_DB_PATH="/data/cloud0.db", CLOUD0_LOG_LEVEL="info")
+          open(sys.argv[1], "w").write("".join(f"{k}: {json.dumps(v)}\n" for k, v in env.items()))
+          PY
+
+          # One instance at most: two would each restore and replicate the same SQLite file. CPU stays allocated
+          # (--no-cpu-throttling) so Litestream can push changes between requests; it still scales to zero.
+          gcloud run deploy "$SERVICE" --region "$REGION" --image "$IMAGE" \
+            --service-account "cloud0-reader@${PROJECT}.iam.gserviceaccount.com" \
+            --no-allow-unauthenticated --port 8087 --execution-environment gen2 \
+            --cpu 1 --memory 512Mi --min-instances 0 --max-instances 1 --no-cpu-throttling \
+            --concurrency 80 --timeout 900 \
+            --env-vars-file "$ENV_FILE" "${SECRET_FLAGS[@]}" --quiet
+
+          echo "url=$(gcloud run services describe "$SERVICE" --region "$REGION" --format 'value(status.url)')" >> "$GITHUB_OUTPUT"
+
+      - name: ID token for the health check
+        id: idtoken
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.DEPLOY_SERVICE_ACCOUNT }}
+          token_format: id_token
+          id_token_audience: ${{ steps.deploy.outputs.url }}
+          id_token_include_email: true
+          create_credentials_file: false
+          export_environment_variables: false
+      - name: Health check
+        env:
+          URL: ${{ steps.deploy.outputs.url }}
+          TOKEN: ${{ steps.idtoken.outputs.id_token }}
+        run: |
+          for i in 1 2 3 4 5 6; do
+            if body="$(curl -fsS -m 60 -H "Authorization: Bearer ${TOKEN}" "${URL}/api/v1/health")"; then
+              echo "healthy: $(printf '%s' "$body" | jq -c '{ok, version, db, migrations, ui, bigquery: .bigquery.status}')"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "health check failed"; exit 1

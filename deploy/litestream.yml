@@ -1,0 +1,7 @@
+# Litestream config for the Cloud Run image (Dockerfile target `cloudrun`, see deploy/entrypoint.sh).
+# ${VARS} are expanded from the environment: on Cloud Run CLOUD0_LITESTREAM_URL is gcs://<bucket>/cloud0.db,
+# in the CI image smoke test a file:// directory.
+dbs:
+  - path: ${CLOUD0_DB_PATH}
+    replicas:
+      - url: ${CLOUD0_LITESTREAM_URL}
