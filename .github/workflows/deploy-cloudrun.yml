@@ -16,7 +16,8 @@
 name: deploy-cloud-run
 on:
   push:
-    branches: [main, feature/cloud0-20261026-1851-v0.1]
+    # TEMPORARY: ci/cloud-run-deploy deploys too, to try the pipeline from PR #2; remove it before merging.
+    branches: [main, feature/cloud0-20261026-1851-v0.1, ci/cloud-run-deploy]
     paths-ignore: ["spec/**", "*.md"]
   workflow_dispatch: {}
 concurrency: { group: cloud-run, cancel-in-progress: false }
