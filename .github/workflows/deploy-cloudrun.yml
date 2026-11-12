@@ -3,7 +3,8 @@
 # never deploy to GCP directly from a workstation. deploy/provision.sh sets up everything below once.
 #
 # Auth is keyless: Workload Identity Federation (provider `cloud0-github` in pool `github`, restricted to push and
-# workflow_dispatch runs of this repo) impersonating cloud0-deployer. The service runs as cloud0-reader.
+# workflow_dispatch runs of this repo) impersonating the shared github-actions-deployer. The service runs as
+# cloud0-reader.
 # The repo is public, so every identifier comes from repository secrets: GCP_PROJECT_ID, GCP_PROJECT_NUMBER,
 # CLOUD0_GCP_PROJECTS, CLOUD0_BIGQUERY_PROJECT, CLOUD0_BILLING_EXPORT_TABLE, and optionally
 # CLOUD0_BILLING_ACCOUNT_ID, CLOUD0_OPENROUTER_API_KEY.
@@ -33,7 +34,7 @@ jobs:
       SERVICE: cloud0
       PROJECT: ${{ secrets.GCP_PROJECT_ID }}
       WORKLOAD_IDENTITY_PROVIDER: projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github/providers/cloud0-github
-      DEPLOY_SERVICE_ACCOUNT: cloud0-deployer@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+      DEPLOY_SERVICE_ACCOUNT: github-actions-deployer@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
     steps:
       - name: Check repository secrets
         env:

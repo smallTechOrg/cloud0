@@ -326,7 +326,7 @@ bash deploy/provision.sh                                     # Alerts/Incidents/
 bash deploy/provision.sh --alerts-key /path/to/alerts-key.json   # also stores the alerts-writer key so Apply works
 ```
 
-It creates the Artifact Registry repo `cloud0`, the bucket `<PROJECT_ID>-cloud0-data`, the `cloud0-deployer` account, and the Workload Identity provider `cloud0-github`, which accepts only this repo's push and workflow_dispatch runs (no GCP keys are stored in GitHub). It also writes the GitHub repository secrets the deploy reads, because the repo is public: `GCP_PROJECT_ID`, `GCP_PROJECT_NUMBER`, `CLOUD0_GCP_PROJECTS`, `CLOUD0_BIGQUERY_PROJECT`, `CLOUD0_BILLING_EXPORT_TABLE`, and, if set, `CLOUD0_BILLING_ACCOUNT_ID` and `CLOUD0_OPENROUTER_API_KEY`. The service runs as the existing read-only `cloud0-reader` (section 10).
+It creates the Artifact Registry repo `cloud0`, the bucket `<PROJECT_ID>-cloud0-data`, and the Workload Identity provider `cloud0-github`, which accepts only this repo's push and workflow_dispatch runs and lets them deploy as the shared `github-actions-deployer` account (no GCP keys are stored in GitHub). It also writes the GitHub repository secrets the deploy reads, because the repo is public: `GCP_PROJECT_ID`, `GCP_PROJECT_NUMBER`, `CLOUD0_GCP_PROJECTS`, `CLOUD0_BIGQUERY_PROJECT`, `CLOUD0_BILLING_EXPORT_TABLE`, and, if set, `CLOUD0_BILLING_ACCOUNT_ID` and `CLOUD0_OPENROUTER_API_KEY`. The service runs as the existing read-only `cloud0-reader` (section 10).
 
 **Opening it.** The service is private, because cloud0 has no login. Open it through an authenticated local proxy, then go to http://localhost:8080/:
 

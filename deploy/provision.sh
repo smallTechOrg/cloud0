@@ -5,9 +5,11 @@
 #   bash deploy/provision.sh [--alerts-key /path/to/alerts-writer-key.json]
 #
 # Creates: the Artifact Registry repo `cloud0`, the bucket <project>-cloud0-data (Litestream replica of the SQLite
-# file), the deployer account cloud0-deployer, and the Workload Identity provider `cloud0-github` (pool `github`) that
-# lets this repo's push / workflow_dispatch runs impersonate it. The service runs as the existing read-only
-# cloud0-reader (README section 10), which is only given object access to the data bucket.
+# file), and the Workload Identity provider `cloud0-github` (pool `github`) that lets this repo's push /
+# workflow_dispatch runs impersonate the shared deployer github-actions-deployer. That account must already exist and
+# already holds Cloud Run Admin, Artifact Registry writer and Service Account User on the project (it deploys the
+# other services too), so nothing is granted to it here. The service runs as the existing read-only cloud0-reader
+# (README section 10), which is only given object access to the data bucket.
 #
 # The repo is public, so identifiers go to GitHub repository secrets, never into the workflow: the project id and
 # number, plus CLOUD0_GCP_PROJECTS, CLOUD0_BIGQUERY_PROJECT, CLOUD0_BILLING_EXPORT_TABLE and the optional
@@ -70,7 +72,7 @@ PROJECT="${PROJECT:-$(setting CLOUD0_BIGQUERY_PROJECT)}"
 PROJECT_NUMBER="$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')"
 G=(--project "$PROJECT")
 RUN_SA="cloud0-reader@${PROJECT}.iam.gserviceaccount.com"
-DEPLOY_SA="cloud0-deployer@${PROJECT}.iam.gserviceaccount.com"
+DEPLOY_SA="github-actions-deployer@${PROJECT}.iam.gserviceaccount.com"
 BUCKET="${PROJECT}-cloud0-data"
 
 echo "== APIs"
@@ -101,23 +103,11 @@ echo "== Service accounts"
 gcloud iam service-accounts describe "$RUN_SA" "${G[@]}" >/dev/null 2>&1 \
   || die "$RUN_SA is missing: create the read-only account first (README section 10)"
 exists "cloud0-reader (runtime)"
-if gcloud iam service-accounts describe "$DEPLOY_SA" "${G[@]}" >/dev/null 2>&1; then
-  exists "cloud0-deployer"
-else
-  gcloud iam service-accounts create cloud0-deployer --display-name "cloud0 GitHub deployer" "${G[@]}"
-  created "cloud0-deployer"
-fi
+gcloud iam service-accounts describe "$DEPLOY_SA" "${G[@]}" >/dev/null 2>&1 \
+  || die "$DEPLOY_SA is missing: it is the shared GitHub deployer and is not created here"
+exists "github-actions-deployer (shared deployer)"
 
 echo "== IAM"
-retry gcloud projects add-iam-policy-binding "$PROJECT" --member "serviceAccount:$DEPLOY_SA" \
-  --role roles/run.admin --condition=None --quiet
-granted "deployer: roles/run.admin on the project (deploy, and invoke for the health check)"
-retry gcloud artifacts repositories add-iam-policy-binding "$AR_REPO" --location "$REGION" \
-  --member "serviceAccount:$DEPLOY_SA" --role roles/artifactregistry.writer "${G[@]}"
-granted "deployer: roles/artifactregistry.writer on $AR_REPO"
-retry gcloud iam service-accounts add-iam-policy-binding "$RUN_SA" \
-  --member "serviceAccount:$DEPLOY_SA" --role roles/iam.serviceAccountUser "${G[@]}"
-granted "deployer: roles/iam.serviceAccountUser on cloud0-reader"
 retry gcloud storage buckets add-iam-policy-binding "gs://$BUCKET" \
   --member "serviceAccount:$RUN_SA" --role roles/storage.objectAdmin "${G[@]}"
 granted "cloud0-reader: roles/storage.objectAdmin on gs://$BUCKET"
@@ -136,7 +126,7 @@ else
   gcloud iam workload-identity-pools providers create-oidc "$WIF_PROVIDER" --location global \
     --workload-identity-pool "$WIF_POOL" --display-name "cloud0 GitHub" \
     --issuer-uri https://token.actions.githubusercontent.com \
-    --attribute-mapping "google.subject=assertion.sub,attribute.repository=assertion.repository" \
+    --attribute-mapping "google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref" \
     --attribute-condition "assertion.repository=='${GH_REPO}' && (assertion.event_name=='push' || assertion.event_name=='workflow_dispatch')" \
     "${G[@]}"
   created "provider $WIF_PROVIDER (only $GH_REPO push / workflow_dispatch runs)"
@@ -144,7 +134,7 @@ fi
 retry gcloud iam service-accounts add-iam-policy-binding "$DEPLOY_SA" --role roles/iam.workloadIdentityUser \
   --member "principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${WIF_POOL}/attribute.repository/${GH_REPO}" \
   "${G[@]}"
-granted "$GH_REPO: roles/iam.workloadIdentityUser on cloud0-deployer"
+granted "$GH_REPO: roles/iam.workloadIdentityUser on github-actions-deployer"
 
 if [ -n "$ALERTS_KEY" ]; then
   echo "== Alerts-writer key (Secret Manager)"
@@ -163,9 +153,6 @@ if [ -n "$ALERTS_KEY" ]; then
   retry gcloud secrets add-iam-policy-binding "$ALERTS_SECRET" --member "serviceAccount:$RUN_SA" \
     --role roles/secretmanager.secretAccessor "${G[@]}"
   granted "cloud0-reader: roles/secretmanager.secretAccessor on $ALERTS_SECRET"
-  retry gcloud secrets add-iam-policy-binding "$ALERTS_SECRET" --member "serviceAccount:$DEPLOY_SA" \
-    --role roles/secretmanager.viewer "${G[@]}"
-  granted "deployer: roles/secretmanager.viewer on $ALERTS_SECRET (to see that it exists)"
 fi
 
 echo "== GitHub repository secrets ($GH_REPO)"
