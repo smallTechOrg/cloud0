@@ -72,4 +72,5 @@ jobs:
           cache-from: type=gha,scope=cloudrun
           cache-to: type=gha,scope=cloudrun,mode=max
       - name: Data survives a restart
-        run: bash deploy/smoke-image.sh cloud0:ci
+        # TEMPORARY: 5 runs to measure a shutdown-sync race; back to one before merging.
+        run: for i in 1 2 3 4 5; do echo "=== run $i ==="; bash deploy/smoke-image.sh cloud0:ci; done

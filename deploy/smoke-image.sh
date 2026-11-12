@@ -15,7 +15,21 @@ PASSWORD="smoke-$$-$RANDOM"
 AUTH="cloud0:${PASSWORD}"
 REPLICA="$(mktemp -d)"
 chmod 777 "$REPLICA"  # the image runs as uid 65532
+LOGS="$(mktemp -d)"
+PHASE=0
 trap 'docker rm -f "$NAME" >/dev/null 2>&1 || true' EXIT
+
+# On failure: both containers' full logs and what the replica actually holds.
+diagnose() {
+  for f in "$LOGS"/*.log; do echo "--- container log: $(basename "$f") ---"; cat "$f"; done
+  echo "--- replica files ---"
+  find "$REPLICA" -type f -exec ls -l {} + | sed "s#${REPLICA}#<replica>#"
+  for what in generations snapshots wal; do
+    echo "--- litestream ${what} ---"
+    docker run --rm -v "${REPLICA}:/replica" --entrypoint /usr/local/bin/litestream "$IMAGE" \
+      "$what" file:///replica/cloud0.db 2>&1 || true
+  done
+}
 
 start() {
   # Throwaway config: serve only needs it to be valid; with no credentials the GCP sources report errors, never crash.
@@ -35,9 +49,11 @@ start() {
 }
 
 stop() {
+  PHASE=$((PHASE + 1))
   docker stop -t 10 "$NAME" >/dev/null
+  docker logs "$NAME" > "${LOGS}/${PHASE}.log" 2>&1
   echo "--- last log lines ---"
-  docker logs "$NAME" 2>&1 | tail -5
+  tail -5 "${LOGS}/${PHASE}.log"
   docker rm "$NAME" >/dev/null
 }
 
@@ -56,10 +72,11 @@ stop
 
 echo "2. second start: new container, empty disk, same replica"
 start
-got="$(curl -fsS -m 10 -u "$AUTH" "${URL}/annotations/${WEEK}")"
+got="$(curl -sS -m 10 -u "$AUTH" "${URL}/annotations/${WEEK}" || true)"
 stop
 if ! printf '%s' "$got" | grep -qF "$NOTE"; then
   echo "the note did not survive the restart; got: $got" >&2
+  diagnose
   exit 1
 fi
 echo "ok: the note survived a restart through the Litestream replica"
