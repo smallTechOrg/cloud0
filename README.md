@@ -309,7 +309,7 @@ docker run --rm --env-file .env -e CLOUD0_DB_PATH=/data/cloud0.db -v cloud0-data
 docker run --rm --env-file .env -e CLOUD0_DB_PATH=/data/cloud0.db -v cloud0-data:/data -p 8087:8087 cloud0 serve
 ```
 
-The image is multi-stage (node → go → distroless) and binds `0.0.0.0`. Mount the service-account key read-only and point `GOOGLE_APPLICATION_CREDENTIALS` at it; on Cloud Run leave it unset. Docker may be absent locally, so this path is not part of the local gate; CI builds the `cloudrun` target on every PR (below).
+The image is multi-stage (node → go → distroless) and binds `0.0.0.0`. Mount the service-account key read-only and point `GOOGLE_APPLICATION_CREDENTIALS` at it; on Cloud Run leave it unset. Docker may be absent locally, so this path is not part of the local gate; CI builds this image on every PR and smoke-tests it against Postgres (below).
 
 ## Deploy to Cloud Run (GitHub Actions)
 

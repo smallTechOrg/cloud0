@@ -24,8 +24,6 @@ var (
 	w44 = isoweek.MustParse("2026-W44")
 )
 
-func strp(s string) *string { return &s }
-
 func snap(id int64, w isoweek.Week, status isoweek.Status, rows []store.SnapshotRow) store.Snapshot {
 	s := store.Snapshot{ID: id, Week: w, WeekID: w.String(), WeekStart: store.FormatDate(w.Start()), WeekEnd: store.FormatDate(w.Sunday()),
 		FetchedAt: now.Add(-time.Hour), StatusAtFetch: status, RunID: id * 10, RowCount: len(rows)}

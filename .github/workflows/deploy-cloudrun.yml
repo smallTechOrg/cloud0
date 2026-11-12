@@ -19,8 +19,7 @@
 name: deploy-cloud-run
 on:
   push:
-    # TEMPORARY: ci/cloud-run-deploy deploys too, to try the pipeline from PR #2; remove it before merging.
-    branches: [main, feature/cloud0-20261026-1851-v0.1, ci/cloud-run-deploy]
+    branches: [main, feature/cloud0-20261026-1851-v0.1]
     paths-ignore: ["spec/**", "*.md"]
   workflow_dispatch:
     inputs:
@@ -181,8 +180,8 @@ jobs:
             HEALTH_PATH=/api/v1/health-drill-404
             echo "::warning::DRILL: probing ${HEALTH_PATH}; this run is expected to fail and roll back."
           fi
-          BODY="$(mktemp)"; HDRS="$(mktemp)"
-          check() { local path="$1"; shift; curl -s -m 60 -o "$BODY" -D "$HDRS" -w '%{http_code}' "$@" "${URL}${path}" || true; }
+          BODY="$(mktemp)"
+          check() { local path="$1"; shift; curl -s -m 60 -o "$BODY" -w '%{http_code}' "$@" "${URL}${path}" || true; }
           # cloud0's own 401 is its JSON envelope; Google's front end answers 401/403 with an HTML page.
           from_cloud0() { jq -e '.error.code == "unauthorized" or .error.code == "invalid_password"' "$BODY" >/dev/null 2>&1; }
 

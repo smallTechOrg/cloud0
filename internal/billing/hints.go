@@ -47,9 +47,6 @@ const hedgedExistenceText = "perhaps it does not exist"
 // hedgedExistenceHint is appended to the permission_denied hint in that case.
 const hedgedExistenceHint = " BigQuery reports this same error when the dataset or table in CLOUD0_BILLING_EXPORT_TABLE is misspelled — check that name too."
 
-// Hint returns the fix instruction for a code ("" for an unknown code).
-func Hint(code Code) string { return hints[code] }
-
 // Failure is a classified source error: the code stored in run_sources,
 // the provider message (trimmed, never containing credential material) and
 // the fix hint shown to the user.

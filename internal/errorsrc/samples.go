@@ -85,11 +85,6 @@ func FocusFilter(service, focus string, minStatus int) string {
 	return fmt.Sprintf(`resource.type="cloud_run_revision" AND resource.labels.service_name=%q AND `, service) + statusClause(focus, minStatus)
 }
 
-// SamplesFilter is RunRequestsFilter bounded to the window w.
-func SamplesFilter(service string, minStatus int, w gcpsource.Window) string {
-	return FocusSamplesFilter(service, FocusAll, minStatus, w)
-}
-
 // FocusSamplesFilter is FocusFilter bounded to the window w.
 func FocusSamplesFilter(service, focus string, minStatus int, w gcpsource.Window) string {
 	return FocusFilter(service, focus, minStatus) + fmt.Sprintf(` AND timestamp>="%s" AND timestamp<"%s"`,
