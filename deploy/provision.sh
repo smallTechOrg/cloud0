@@ -52,6 +52,13 @@ setting() {
 
 [ -f go.mod ] && [ -d deploy ] || die "run from the repo root"
 command -v gcloud >/dev/null || die "gcloud is not installed"
+# Git Bash on Windows: gcloud's launcher may pick a .bat Python shim (pyenv-win), which runs through cmd.exe and
+# mangles arguments containing ( ) && || (formats, the WIF condition). Use the SDK's bundled Python instead.
+if [ -z "${CLOUDSDK_PYTHON:-}" ]; then
+  bundled="$(dirname "$(command -v gcloud)")/../platform/bundledpython/python.exe"
+  if [ -x "$bundled" ]; then export CLOUDSDK_PYTHON="$bundled"; fi
+fi
+[ -n "$(gcloud info --format='value(basic.version)' 2>/dev/null)" ] || die "gcloud cannot print value() formats in this shell; set CLOUDSDK_PYTHON"
 command -v gh >/dev/null || die "gh is not installed"
 gcloud auth print-access-token >/dev/null 2>&1 || die "gcloud is not logged in: run gcloud auth login"
 gh auth status >/dev/null 2>&1 || die "gh is not logged in: run gh auth login"
