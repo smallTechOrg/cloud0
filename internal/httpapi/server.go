@@ -48,8 +48,9 @@ func (d Deps) now() time.Time {
 	return time.Now().UTC()
 }
 
-// NewHandler builds the full routing tree: request logging around the API
-// and the UI. Exposed for httptest-based tests.
+// NewHandler builds the full routing tree: request logging around the
+// password check (when CLOUD0_PASSWORD is set), around the API and the UI.
+// Exposed for httptest-based tests.
 func NewHandler(deps Deps) http.Handler {
 	if deps.UI == nil {
 		deps.UI = webui.Handler()
@@ -60,7 +61,11 @@ func NewHandler(deps Deps) http.Handler {
 	mux := http.NewServeMux()
 	registerRoutes(mux, deps)
 	mux.Handle("/", deps.UI)
-	return logging.Requests(deps.Logger)(mux)
+	var h http.Handler = mux
+	if deps.Config.Password != "" {
+		h = requirePassword(deps.Config.Password, h)
+	}
+	return logging.Requests(deps.Logger)(h)
 }
 
 // New returns the configured *http.Server listening on Config.Addr().

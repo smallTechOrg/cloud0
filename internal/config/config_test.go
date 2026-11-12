@@ -224,3 +224,32 @@ func TestLoad_ProposerSettings(t *testing.T) {
 		}
 	}
 }
+
+func TestLoad_PasswordIsOptionalAndNeverPrinted(t *testing.T) {
+	cfg, err := Load(env(minimal()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Password != "" || cfg.Redacted()["password"] != "unset" {
+		t.Errorf("unset password: set=%v redacted=%v", cfg.Password != "", cfg.Redacted()["password"])
+	}
+
+	m := minimal()
+	m["CLOUD0_PASSWORD"] = "  placeholder-password  "
+	cfg, err = Load(env(m))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Password != "placeholder-password" {
+		t.Errorf("password not read/trimmed")
+	}
+	r := cfg.Redacted()
+	if r["password"] != "set" {
+		t.Errorf("redacted password = %v, want set", r["password"])
+	}
+	for k, v := range r {
+		if s, ok := v.(string); ok && strings.Contains(s, "placeholder-password") {
+			t.Errorf("redacted view leaks the password under %q", k)
+		}
+	}
+}

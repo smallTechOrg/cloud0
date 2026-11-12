@@ -61,6 +61,7 @@ cp .env.example .env
 | `CLOUD0_OPENROUTER_API_KEY` | no | unset | Enables the optional LLM rule proposer (`POST /api/v1/attribution/propose`). Unset = disabled (503, no outbound call). Proposals are never applied automatically; prompts carry resource names/labels only, no amounts. Secret: keep in `.env`. |
 | `CLOUD0_LLM_MODEL` | no | `anthropic/claude-sonnet-4-6` | OpenRouter model slug used by the rule proposer. |
 | `CLOUD0_ALERTS_CREDENTIALS` | no | unset | Absolute path to the **alerts-writer** service-account key (a second, separate account; see section 9). Unset = Alerts, Incidents and Budgets are read-only: previews work, Apply and budget reads answer `503 alerts_not_configured`. Secret: keep the key outside the repo. |
+| `CLOUD0_PASSWORD` | no (yes on Cloud Run) | unset | Puts every page and API call behind HTTP Basic auth: the browser asks once, any username, this password. Unset = no login (local use). Leave it out of `.env`, or the e2e suite is locked out too. Secret. |
 | `CLOUD0_SMOKE_WEEK` | tests only | `2026-W42` | A known complete, non-empty week for smoke/e2e tests. |
 | `CLOUD0_E2E_PORT` | tests only | `8097` | Port Playwright starts the binary on. |
 
@@ -172,7 +173,7 @@ Server log lines to expect in the terminal: `request` (one per HTTP request), an
 
 - Only the **Vendors** tab is still a stub ("Coming in Phase 4"). Every other tab is real: Metrics, Errors, Month and Limits (section 8); Attribution, Targets, Rightsizing and the By product / By environment Cost views (section 9); Alerts, Incidents and Budgets (section 10).
 - The Cost table columns **AI Cost (Groq) (stub)** and **claude (usage) (stub)** show "—" in every cell (Phase 4).
-- The Groq limits in the Limits tab are labelled stubs (Phase 4). There is no login, no scheduler and no AI in the product.
+- The Groq limits in the Limits tab are labelled stubs (Phase 4). There is no login (except the optional `CLOUD0_PASSWORD`, used on Cloud Run), no scheduler and no AI in the product.
 
 ## 7. Phase 1 gate
 
@@ -315,23 +316,20 @@ Deployments go only through GitHub Actions; never deploy from a workstation.
 
 | Workflow | When | What |
 |---|---|---|
-| `ci.yml` | every PR | web typecheck, Vitest, static export; `go vet`; Go tests (real-BigQuery tests skip: no credentials in CI); builds the Cloud Run image and checks that a week note survives a container restart through its Litestream replica |
-| `deploy-cloudrun.yml` | push to `main` or the v0.1 feature branch, or by hand (Actions → deploy-cloud-run → Run workflow) | CI, then build and push the image, deploy the `cloud0` service, health-check `/api/v1/health` |
+| `ci.yml` | every PR | web typecheck, Vitest, static export; `go vet`; Go tests (real-BigQuery tests skip: no credentials in CI); builds the Cloud Run image and checks, with a password set, that a request without it gets `401` and that a week note survives a container restart through its Litestream replica |
+| `deploy-cloudrun.yml` | push to `main` or the v0.1 feature branch, or by hand (Actions → deploy-cloud-run → Run workflow) | CI, then build and push the image, deploy the `cloud0` service, health-check `/api/v1/health` with the password and confirm it answers `401` without it |
 
 **One-time setup.** Run it once as a project owner, with `gcloud auth login` and `gh auth login` done and `.env` filled in. Re-running it creates only what is missing. It never deploys.
 
 ```sh
 # working directory: repo root
-bash deploy/provision.sh                                     # Alerts/Incidents/Budgets read-only on Cloud Run
-bash deploy/provision.sh --alerts-key /path/to/alerts-key.json   # also stores the alerts-writer key so Apply works
+CLOUD0_PASSWORD='<long random password>' bash deploy/provision.sh   # Alerts/Incidents/Budgets read-only on Cloud Run
+bash deploy/provision.sh --alerts-key /path/to/alerts-key.json      # also stores the alerts-writer key so Apply works
+gh secret set CLOUD0_PASSWORD                                        # change the password (applies on the next deploy)
 ```
 
-It creates the Artifact Registry repo `cloud0`, the bucket `<PROJECT_ID>-cloud0-data`, and the Workload Identity provider `cloud0-github`, which accepts only this repo's push and workflow_dispatch runs and lets them deploy as the shared `github-actions-deployer` account (no GCP keys are stored in GitHub). It also writes the GitHub repository secrets the deploy reads, because the repo is public: `GCP_PROJECT_ID`, `GCP_PROJECT_NUMBER`, `CLOUD0_GCP_PROJECTS`, `CLOUD0_BIGQUERY_PROJECT`, `CLOUD0_BILLING_EXPORT_TABLE`, and, if set, `CLOUD0_BILLING_ACCOUNT_ID` and `CLOUD0_OPENROUTER_API_KEY`. The service runs as the existing read-only `cloud0-reader` (section 10).
+It creates the Artifact Registry repo `cloud0`, the bucket `<PROJECT_ID>-cloud0-data`, and the Workload Identity provider `cloud0-github`, which accepts only this repo's push and workflow_dispatch runs and lets them deploy as the shared `github-actions-deployer` account (no GCP keys are stored in GitHub). It also writes the GitHub repository secrets the deploy reads, because the repo is public: `GCP_PROJECT_ID`, `GCP_PROJECT_NUMBER`, `CLOUD0_GCP_PROJECTS`, `CLOUD0_BIGQUERY_PROJECT`, `CLOUD0_BILLING_EXPORT_TABLE`, `CLOUD0_PASSWORD` (from the environment only, never `.env`), and, if set, `CLOUD0_BILLING_ACCOUNT_ID` and `CLOUD0_OPENROUTER_API_KEY`. The service runs as the existing read-only `cloud0-reader` (section 10).
 
-**Opening it.** The service is private, because cloud0 has no login. Open it through an authenticated local proxy, then go to http://localhost:8080/:
-
-```sh
-gcloud run services proxy cloud0 --region us-central1 --project <PROJECT_ID>
-```
+**Opening it.** The service URL is public, and `CLOUD0_PASSWORD` guards every page and API call. Open the URL (Cloud Run console, or `gcloud run services describe cloud0 --region us-central1 --format='value(status.url)'`); the browser asks for a username and password: any username, the `CLOUD0_PASSWORD` value. The deploy refuses to run without the secret and fails if a request without the password gets anything but `401`.
 
 **Data.** Cloud Run's disk starts empty on every instance. The image's entrypoint (`deploy/entrypoint.sh`) uses Litestream to restore the SQLite file from `gs://<PROJECT_ID>-cloud0-data`, runs `migrate up`, and then streams every change back while serving. For that reason the service is capped at **one instance**. Org policy requires request-based billing, so Litestream pushes changes while requests run and when the instance shuts down (Cloud Run gives it CPU after SIGTERM); only a hard crash between a write and the next request or shutdown could lose that write. It scales to zero when idle. During a deploy the old and new instance overlap for a few seconds, so don't edit notes, rules or targets, or Apply, while a deploy is running.

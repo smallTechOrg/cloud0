@@ -14,6 +14,9 @@
 # The repo is public, so identifiers go to GitHub repository secrets, never into the workflow: the project id and
 # number, plus CLOUD0_GCP_PROJECTS, CLOUD0_BIGQUERY_PROJECT, CLOUD0_BILLING_EXPORT_TABLE and the optional
 # CLOUD0_BILLING_ACCOUNT_ID / CLOUD0_OPENROUTER_API_KEY, read from the environment or ./.env (values are never printed).
+# CLOUD0_PASSWORD (required by the deploy: the URL is public) is read from the environment only, never .env, where it
+# would also put local runs and the e2e suite behind the password:
+#   CLOUD0_PASSWORD='<a long random password>' bash deploy/provision.sh     (or: gh secret set CLOUD0_PASSWORD)
 # Cloud Run goes into CLOUD0_BIGQUERY_PROJECT unless PROJECT is set.
 #
 # --alerts-key stores the alerts-writer key in Secret Manager (cloud0-alerts-key) so Apply works on Cloud Run; without
@@ -166,7 +169,11 @@ put GCP_PROJECT_NUMBER "$PROJECT_NUMBER"
 for k in CLOUD0_GCP_PROJECTS CLOUD0_BIGQUERY_PROJECT CLOUD0_BILLING_EXPORT_TABLE CLOUD0_BILLING_ACCOUNT_ID CLOUD0_OPENROUTER_API_KEY; do
   put "$k" "$(setting "$k")"
 done
+put CLOUD0_PASSWORD "${CLOUD0_PASSWORD:-}"
+if [ -z "${CLOUD0_PASSWORD:-}" ] && ! gh secret list -R "$GH_REPO" | grep -q '^CLOUD0_PASSWORD\b'; then
+  echo "NOTE    the deploy needs CLOUD0_PASSWORD: gh secret set CLOUD0_PASSWORD -R $GH_REPO"
+fi
 
 echo
 echo "Done. Deploy by pushing to main or the v0.1 feature branch, or: gh workflow run deploy-cloudrun.yml -R $GH_REPO --ref <branch>"
-echo "Open the private service with: gcloud run services proxy cloud0 --region $REGION --project <PROJECT_ID>"
+echo "Then open the service URL and sign in with any username and the CLOUD0_PASSWORD value."

@@ -6,11 +6,11 @@
 # workflow_dispatch runs of this repo) impersonating the shared github-actions-deployer. The service runs as
 # cloud0-reader.
 # The repo is public, so every identifier comes from repository secrets: GCP_PROJECT_ID, GCP_PROJECT_NUMBER,
-# CLOUD0_GCP_PROJECTS, CLOUD0_BIGQUERY_PROJECT, CLOUD0_BILLING_EXPORT_TABLE, and optionally
+# CLOUD0_GCP_PROJECTS, CLOUD0_BIGQUERY_PROJECT, CLOUD0_BILLING_EXPORT_TABLE, CLOUD0_PASSWORD, and optionally
 # CLOUD0_BILLING_ACCOUNT_ID, CLOUD0_OPENROUTER_API_KEY.
 #
-# The service is private (cloud0 has no login): open it with
-#   gcloud run services proxy cloud0 --region us-central1 --project <PROJECT_ID>
+# The URL is public and CLOUD0_PASSWORD guards every page and API call (HTTP Basic auth, any username). The deploy
+# refuses to run without it, and the health check confirms a request without it is turned away.
 # SQLite lives on the instance and is restored from / streamed to gs://<PROJECT_ID>-cloud0-data by Litestream,
 # which is why the service is capped at one instance.
 name: deploy-cloud-run
@@ -44,9 +44,10 @@ jobs:
           CLOUD0_GCP_PROJECTS: ${{ secrets.CLOUD0_GCP_PROJECTS }}
           CLOUD0_BIGQUERY_PROJECT: ${{ secrets.CLOUD0_BIGQUERY_PROJECT }}
           CLOUD0_BILLING_EXPORT_TABLE: ${{ secrets.CLOUD0_BILLING_EXPORT_TABLE }}
+          CLOUD0_PASSWORD: ${{ secrets.CLOUD0_PASSWORD }}
         run: |
           missing=""
-          for k in GCP_PROJECT_ID GCP_PROJECT_NUMBER CLOUD0_GCP_PROJECTS CLOUD0_BIGQUERY_PROJECT CLOUD0_BILLING_EXPORT_TABLE; do
+          for k in GCP_PROJECT_ID GCP_PROJECT_NUMBER CLOUD0_GCP_PROJECTS CLOUD0_BIGQUERY_PROJECT CLOUD0_BILLING_EXPORT_TABLE CLOUD0_PASSWORD; do
             [ -n "${!k}" ] || missing="$missing $k"
           done
           if [ -n "$missing" ]; then
@@ -87,6 +88,7 @@ jobs:
           CLOUD0_BILLING_EXPORT_TABLE: ${{ secrets.CLOUD0_BILLING_EXPORT_TABLE }}
           CLOUD0_BILLING_ACCOUNT_ID: ${{ secrets.CLOUD0_BILLING_ACCOUNT_ID }}
           CLOUD0_OPENROUTER_API_KEY: ${{ secrets.CLOUD0_OPENROUTER_API_KEY }}
+          CLOUD0_PASSWORD: ${{ secrets.CLOUD0_PASSWORD }}
         run: |
           set -euo pipefail
           export CLOUD0_LITESTREAM_URL="gcs://${PROJECT}-cloud0-data/cloud0.db"
@@ -105,7 +107,7 @@ jobs:
           ENV_FILE="$(mktemp)"; trap 'rm -f "$ENV_FILE"' EXIT
           python3 - "$ENV_FILE" <<'PY'
           import json, os, sys
-          env = {k: os.environ[k] for k in ["CLOUD0_GCP_PROJECTS", "CLOUD0_BIGQUERY_PROJECT", "CLOUD0_BILLING_EXPORT_TABLE", "CLOUD0_LITESTREAM_URL"]}
+          env = {k: os.environ[k] for k in ["CLOUD0_GCP_PROJECTS", "CLOUD0_BIGQUERY_PROJECT", "CLOUD0_BILLING_EXPORT_TABLE", "CLOUD0_LITESTREAM_URL", "CLOUD0_PASSWORD"]}
           env.update({k: os.environ[k] for k in ["CLOUD0_BILLING_ACCOUNT_ID", "CLOUD0_OPENROUTER_API_KEY", "CLOUD0_ALERTS_CREDENTIALS"] if os.environ.get(k)})
           env.update(CLOUD0_DB_PATH="/data/cloud0.db", CLOUD0_LOG_LEVEL="info")
           open(sys.argv[1], "w").write("".join(f"{k}: {json.dumps(v)}\n" for k, v in env.items()))
@@ -116,34 +118,29 @@ jobs:
           # and on shutdown (Cloud Run gives CPU after SIGTERM); only a hard crash in between can lose a write.
           gcloud run deploy "$SERVICE" --region "$REGION" --image "$IMAGE" \
             --service-account "cloud0-reader@${PROJECT}.iam.gserviceaccount.com" \
-            --no-allow-unauthenticated --port 8087 --execution-environment gen2 \
+            --allow-unauthenticated --port 8087 --execution-environment gen2 \
             --cpu 1 --memory 512Mi --min-instances 0 --max-instances 1 --cpu-throttling --no-cpu-boost \
             --concurrency 80 --timeout 900 \
             --env-vars-file "$ENV_FILE" "${SECRET_FLAGS[@]}" --quiet
 
           echo "url=$(gcloud run services describe "$SERVICE" --region "$REGION" --format 'value(status.url)')" >> "$GITHUB_OUTPUT"
 
-      - name: ID token for the health check
-        id: idtoken
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ env.DEPLOY_SERVICE_ACCOUNT }}
-          token_format: id_token
-          id_token_audience: ${{ steps.deploy.outputs.url }}
-          id_token_include_email: true
-          create_credentials_file: false
-          export_environment_variables: false
       - name: Health check
         env:
           URL: ${{ steps.deploy.outputs.url }}
-          TOKEN: ${{ steps.idtoken.outputs.id_token }}
+          CLOUD0_PASSWORD: ${{ secrets.CLOUD0_PASSWORD }}
         run: |
+          healthy=""
           for i in 1 2 3 4 5 6; do
-            if body="$(curl -fsS -m 60 -H "Authorization: Bearer ${TOKEN}" "${URL}/api/v1/health")"; then
-              echo "healthy: $(printf '%s' "$body" | jq -c '{ok, version, db, migrations, ui, bigquery: .bigquery.status}')"
-              exit 0
+            if body="$(curl -fsS -m 60 -u "cloud0:${CLOUD0_PASSWORD}" "${URL}/api/v1/health")"; then
+              healthy="$(printf '%s' "$body" | jq -c '{ok, version, db, migrations, ui, bigquery: .bigquery.status}')"
+              break
             fi
             sleep 10
           done
-          echo "health check failed"; exit 1
+          [ -n "$healthy" ] || { echo "health check failed"; exit 1; }
+          echo "healthy: $healthy"
+          # The URL is public: make sure the password really guards it.
+          code="$(curl -s -m 30 -o /dev/null -w '%{http_code}' "${URL}/api/v1/health")"
+          [ "$code" = 401 ] || { echo "::error::A request without the password got $code, want 401"; exit 1; }
+          echo "without the password: 401 as expected"

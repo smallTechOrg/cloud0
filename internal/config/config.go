@@ -65,6 +65,11 @@ type Config struct {
 	OpenRouterAPIKey string
 	LLMModel         string
 
+	// Password (CLOUD0_PASSWORD), when set, puts every page and API call
+	// behind HTTP Basic auth: any username, this password. Unset = no login,
+	// for local use. A secret: never printed; Redacted() reports only set/unset.
+	Password string
+
 	// Test-only knobs, read here so every variable has one home.
 	SmokeWeek isoweek.Week
 	E2EPort   int
@@ -173,6 +178,7 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 
 	cfg.OpenRouterAPIKey = get("CLOUD0_OPENROUTER_API_KEY")
+	cfg.Password = get("CLOUD0_PASSWORD")
 	cfg.LLMModel = get("CLOUD0_LLM_MODEL")
 	if cfg.LLMModel == "" {
 		cfg.LLMModel = DefaultLLMModel
@@ -207,8 +213,13 @@ func (c Config) Redacted() map[string]any {
 	if c.OpenRouterAPIKey != "" {
 		orKey = "set"
 	}
+	password := "unset"
+	if c.Password != "" {
+		password = "set"
+	}
 	return map[string]any{
 		"openrouter_api_key":    orKey,
+		"password":              password,
 		"llm_model":             c.LLMModel,
 		"credentials":           creds,
 		"projects":              c.Projects,
