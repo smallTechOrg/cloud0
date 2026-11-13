@@ -107,14 +107,10 @@ func InsertChange(ctx context.Context, q Querier, nc NewChange) (ChangeEntry, er
 		nc.Actor = "local-user"
 	}
 	at := nc.At.UTC().Truncate(time.Second)
-	res, err := q.ExecContext(ctx, `INSERT INTO change_history (at, actor, kind, action, target, before_json, after_json, preview_hash)
+	id, err := InsertID(ctx, q, `INSERT INTO change_history (at, actor, kind, action, target, before_json, after_json, preview_hash)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, FormatTime(at), nc.Actor, nc.Kind, nc.Action, nc.Target, nullable(nc.Before), nullable(nc.After), nc.PreviewHash)
 	if err != nil {
 		return ChangeEntry{}, fmt.Errorf("store: insert change: %w", err)
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		return ChangeEntry{}, fmt.Errorf("store: insert change id: %w", err)
 	}
 	return ChangeEntry{ID: id, At: at, Actor: nc.Actor, Kind: nc.Kind, Action: nc.Action, Target: nc.Target,
 		Before: jsonOrNull(RedactJSON(nc.Before)), After: jsonOrNull(RedactJSON(nc.After)), PreviewHash: nc.PreviewHash}, nil

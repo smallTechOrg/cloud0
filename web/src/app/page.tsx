@@ -41,7 +41,7 @@ import { CurrencyContext } from '@/lib/currency';
 import { buildCsv, csvFilename, downloadTextFile } from '@/lib/csv';
 import { FALLBACK_COLUMNS } from '@/lib/fallbackColumns';
 import { DEFAULT_CURRENCY, formatBytes, formatDurationMs, formatInteger, formatTimeZ } from '@/lib/format';
-import { TABS, tabById, tabFromHash, type TabId } from '@/lib/tabs';
+import { tabById, tabFromHash, type TabId } from '@/lib/tabs';
 import {
   SCOPE_ALL,
   type Annotation,

@@ -205,27 +205,15 @@ func TestSchema_EnforcesChecksForeignKeysAndCascade(t *testing.T) {
 	// Happy path through WithTx, then cascade delete.
 	var snapID int64
 	err = s.WithTx(ctx, func(tx *sql.Tx) error {
-		res, err := tx.Exec(`INSERT INTO runs ("trigger", from_iso_year, from_iso_week, to_iso_year, to_iso_week, started_at, status, created_at) VALUES ('refresh_week', 2026, 42, 2026, 42, ?, 'running', ?)`, now, now)
+		runID, err := InsertID(ctx, tx, `INSERT INTO runs ("trigger", from_iso_year, from_iso_week, to_iso_year, to_iso_week, started_at, status, created_at) VALUES ('refresh_week', 2026, 42, 2026, 42, ?, 'running', ?)`, now, now)
 		if err != nil {
 			return err
 		}
-		runID, err := LastInsertID(res)
+		srcID, err := InsertID(ctx, tx, `INSERT INTO run_sources (run_id, source, status, started_at, finished_at, duration_ms, sql_text, params_json) VALUES (?, 'bigquery_billing', 'ok', ?, ?, 1, 'SELECT 1', '{}')`, runID, now, now)
 		if err != nil {
 			return err
 		}
-		res, err = tx.Exec(`INSERT INTO run_sources (run_id, source, status, started_at, finished_at, duration_ms, sql_text, params_json) VALUES (?, 'bigquery_billing', 'ok', ?, ?, 1, 'SELECT 1', '{}')`, runID, now, now)
-		if err != nil {
-			return err
-		}
-		srcID, err := LastInsertID(res)
-		if err != nil {
-			return err
-		}
-		res, err = tx.Exec(`INSERT INTO snapshots (iso_year, iso_week, week_start, week_end, fetched_at, status_at_fetch, run_id, run_source_id, row_count, gross_total, credits_total, net_total, created_at) VALUES (2026, 42, '2026-10-12', '2026-10-18', ?, 'final', ?, ?, 1, 1.5, -0.5, 1.0, ?)`, now, runID, srcID, now)
-		if err != nil {
-			return err
-		}
-		snapID, err = LastInsertID(res)
+		snapID, err = InsertID(ctx, tx, `INSERT INTO snapshots (iso_year, iso_week, week_start, week_end, fetched_at, status_at_fetch, run_id, run_source_id, row_count, gross_total, credits_total, net_total, created_at) VALUES (2026, 42, '2026-10-12', '2026-10-18', ?, 'final', ?, ?, 1, 1.5, -0.5, 1.0, ?)`, now, runID, srcID, now)
 		if err != nil {
 			return err
 		}

@@ -53,6 +53,7 @@ cp .env.example .env
 | `CLOUD0_PORT` | no | `8087` | Listen port (falls back to `PORT` when unset). |
 | `CLOUD0_BIND` | no | `127.0.0.1` | Bind address; the Dockerfile sets `0.0.0.0`. |
 | `CLOUD0_DB_PATH` | no | `./data/cloud0.db` | SQLite file; parent directory created if missing. |
+| `CLOUD0_DATABASE_URL` | no (yes on Cloud Run) | unset | Postgres instead of the SQLite file: `postgres://user:password@host:5432/db?sslmode=require`. Cloud Run uses the `cloud0` database on Cloud SQL. Secret. |
 | `CLOUD0_FIRST_WEEK` | no | `2026-W18` | First ISO week shown / covered by Refresh all. |
 | `CLOUD0_SETTLE_HOURS` | no | `48` | Hours after a week ends before it is labelled `final`. |
 | `CLOUD0_PARTITION_MARGIN_DAYS` | no | `1` | Days added on each side of the `_PARTITIONTIME` filter. |
@@ -61,6 +62,7 @@ cp .env.example .env
 | `CLOUD0_OPENROUTER_API_KEY` | no | unset | Enables the optional LLM rule proposer (`POST /api/v1/attribution/propose`). Unset = disabled (503, no outbound call). Proposals are never applied automatically; prompts carry resource names/labels only, no amounts. Secret: keep in `.env`. |
 | `CLOUD0_LLM_MODEL` | no | `anthropic/claude-sonnet-4-6` | OpenRouter model slug used by the rule proposer. |
 | `CLOUD0_ALERTS_CREDENTIALS` | no | unset | Absolute path to the **alerts-writer** service-account key (a second, separate account; see section 9). Unset = Alerts, Incidents and Budgets are read-only: previews work, Apply and budget reads answer `503 alerts_not_configured`. Secret: keep the key outside the repo. |
+| `CLOUD0_PASSWORD` | no (yes on Cloud Run) | unset | Puts every page and API call behind this password: browsers sign in once on `/login` (one password field, no username; a 30-day session cookie), scripts send it with HTTP Basic auth and an empty username (`curl -u :PASSWORD`). Unset = no login (local use). Changing it signs everyone out. Leave it out of `.env`, or the e2e suite is locked out too. Secret. |
 | `CLOUD0_SMOKE_WEEK` | tests only | `2026-W42` | A known complete, non-empty week for smoke/e2e tests. |
 | `CLOUD0_E2E_PORT` | tests only | `8097` | Port Playwright starts the binary on. |
 
@@ -129,7 +131,7 @@ make e2e         # cd web && pnpm exec playwright test   (starts ./bin/cloud0 on
 - `tests/scaffold` builds the binary, migrates a temp DB, starts `serve` on an OS-assigned port and checks health, the served UI, its CSS/JS and the request log. It needs `make web-build` to have run first.
 - `tests/smoke` (Phase 1 live smoke) runs `make build`, migrates a temp DB, starts `serve` on an OS-assigned port with the real `.env` BigQuery settings, waits for `health.bigquery.status == "ok"`, refreshes `CLOUD0_SMOKE_WEEK` (default `2026-W42`), asserts Compute Engine net > 0 and Total GCP = Σ services ± 0.005, fetches `/` and every linked CSS/JS, checks the `request` / `refresh.done` log lines, then stops the server and deletes the temp DB. It runs for real against BigQuery (one query, well under 200 MB) and takes a few minutes because it rebuilds the UI. Run it alone with `GO111MODULE=on GOTOOLCHAIN=local /opt/homebrew/bin/go test ./tests/smoke/ -count=1 -v -timeout 15m`.
 - `tests/smoke/live_phase2_test.go` starts its own server, runs `refresh` mode `all` and then the smoke week against real GCP, and asserts the Phase 2 gate checks (section 8). Run it alone with `... go test ./tests/smoke/ -run Phase2 -count=1 -v`.
-- Every test uses its own temp SQLite file; nothing touches `./data/cloud0.db`.
+- Every test uses its own temp SQLite file; nothing touches `./data/cloud0.db`. With `CLOUD0_TEST_DATABASE_URL=postgres://…` set, each test gets its own schema on that Postgres server instead (CI runs the suite both ways).
 
 Gates (`spec/roadmap.md`):
 
@@ -172,7 +174,7 @@ Server log lines to expect in the terminal: `request` (one per HTTP request), an
 
 - Only the **Vendors** tab is still a stub ("Coming in Phase 4"). Every other tab is real: Metrics, Errors, Month and Limits (section 8); Attribution, Targets, Rightsizing and the By product / By environment Cost views (section 9); Alerts, Incidents and Budgets (section 10).
 - The Cost table columns **AI Cost (Groq) (stub)** and **claude (usage) (stub)** show "—" in every cell (Phase 4).
-- The Groq limits in the Limits tab are labelled stubs (Phase 4). There is no login, no scheduler and no AI in the product.
+- The Groq limits in the Limits tab are labelled stubs (Phase 4). There is no login (except the optional `CLOUD0_PASSWORD`, used on Cloud Run), no scheduler and no AI in the product.
 
 ## 7. Phase 1 gate
 
@@ -222,7 +224,7 @@ All computed at read time from the latest snapshot of the selected week; nothing
 
 **Errors triage.** The Errors tab now ranks each Cloud Run service and Error Reporting group as needs attention / watch / noise / healthy with plain-language reasons, 5xx and client-4xx rates, and the change against the previous week; samples link to Logs Explorer.
 
-**Saving rules and targets writes to the local SQLite DB only** (never to GCP). To walk the tab without changing anything use the seed *preview* and the explain drawer.
+**Saving rules and targets writes to cloud0's own database only** (never to GCP). To walk the tab without changing anything use the seed *preview* and the explain drawer.
 
 ## 10. Phase 4 (part): Alerts, Incidents, Budgets and the two service accounts
 
@@ -276,7 +278,7 @@ cmd/cloud0/            entry point (serve | migrate up | migrate status | versio
 internal/config        env + .env loading, validation, redacted view
 internal/logging       slog JSON logger, request-log middleware
 internal/isoweek       ISO week math (bounds, status, ranges)
-internal/store         SQLite open/pragmas, goose migrations (migrations/0001_init.sql)
+internal/store         SQLite or Postgres open (postgres.go rebinds ? placeholders), goose migrations (migrations/, migrations_postgres/)
 internal/billing       BigQuery billing source (query builder, fetch, error classification)
 internal/costtable     pure cost-table assembly and drill-down grouping
 internal/refresh       refresh orchestrator (one run, one row per source, snapshots)
@@ -294,6 +296,8 @@ internal/testenv       test helpers: .env loading, BigQuery skip rule, temp DB, 
 tests/scaffold         cross-process boot test
 tests/smoke            live smokes (Phase 1 cost refresh; Phase 2 metrics/errors/limits/month; real GCP, real server)
 web/                   Next.js (static export) app, Vitest, Playwright
+deploy/                Cloud Run: one-time provisioning (incl. the Cloud SQL database), image smoke test against Postgres
+.github/workflows/     ci.yml (every PR) and deploy-cloudrun.yml (CI, then deploy to Cloud Run)
 ```
 
 ## Docker (not gated in Phase 1)
@@ -305,4 +309,28 @@ docker run --rm --env-file .env -e CLOUD0_DB_PATH=/data/cloud0.db -v cloud0-data
 docker run --rm --env-file .env -e CLOUD0_DB_PATH=/data/cloud0.db -v cloud0-data:/data -p 8087:8087 cloud0 serve
 ```
 
-The image is multi-stage (node → go → distroless) and binds `0.0.0.0`. Mount the service-account key read-only and point `GOOGLE_APPLICATION_CREDENTIALS` at it; on Cloud Run leave it unset. Docker may be absent locally, so this path is not part of any gate yet.
+The image is multi-stage (node → go → distroless) and binds `0.0.0.0`. Mount the service-account key read-only and point `GOOGLE_APPLICATION_CREDENTIALS` at it; on Cloud Run leave it unset. Docker may be absent locally, so this path is not part of the local gate; CI builds this image on every PR and smoke-tests it against Postgres (below).
+
+## Deploy to Cloud Run (GitHub Actions)
+
+Deployments go only through GitHub Actions; never deploy from a workstation.
+
+| Workflow | When | What |
+|---|---|---|
+| `ci.yml` | every PR | web typecheck, Vitest, static export; `go vet`; Go tests on SQLite and again on Postgres 17 (real-BigQuery tests skip: no credentials in CI); builds the image and smoke-tests it against Postgres: `migrate up`, the sign-in flow, and a week note surviving a new container |
+| `deploy-cloudrun.yml` | push to `main` or the v0.1 feature branch, or by hand (Actions → deploy-cloud-run → Run workflow) | CI, then build and push the image, deploy the `cloud0` service as revision `cloud0-sha-<commit>`, health-check `/api/v1/health` with the password and confirm it answers `401` without it; if any of that fails, traffic goes back to the previous revision. Running it by hand with **drill_rollback** probes a path that 404s, to prove the rollback works. |
+
+**One-time setup.** Run it once as a project owner, with `gcloud auth login` and `gh auth login` done and `.env` filled in. Re-running it creates only what is missing. It never deploys.
+
+```sh
+# working directory: repo root
+CLOUD0_PASSWORD='<long random password>' bash deploy/provision.sh   # Alerts/Incidents/Budgets read-only on Cloud Run
+bash deploy/provision.sh --alerts-key /path/to/alerts-key.json      # also stores the alerts-writer key so Apply works
+gh secret set CLOUD0_PASSWORD                                        # change the password (applies on the next deploy)
+```
+
+It creates the Artifact Registry repo `cloud0`, the Cloud SQL user `cloud0_app` and the database `cloud0` it owns on the shared `ai-agent-db` instance (Postgres 17, private IP), and the Workload Identity provider `cloud0-github`, which accepts only this repo's push and workflow_dispatch runs on `main` and the v0.1 feature branch (`DEPLOY_REFS`) and lets them deploy as the shared `github-actions-deployer` account (no GCP keys are stored in GitHub). It also writes the GitHub repository secrets the deploy reads, because the repo is public: `GCP_PROJECT_ID`, `GCP_PROJECT_NUMBER`, `CLOUD0_GCP_PROJECTS`, `CLOUD0_BIGQUERY_PROJECT`, `CLOUD0_BILLING_EXPORT_TABLE`, `CLOUD0_PASSWORD` (from the environment only, never `.env`), `CLOUD0_DATABASE_URL` (built when it creates the database user; a copy goes to the gitignored `.env.cloudrun`), and, if set, `CLOUD0_BILLING_ACCOUNT_ID` and `CLOUD0_OPENROUTER_API_KEY`. The service runs as the existing read-only `cloud0-reader` (section 10).
+
+**Opening it.** The service URL is public, and `CLOUD0_PASSWORD` guards every page and API call. Open the URL (Cloud Run console, or `gcloud run services describe cloud0 --region us-central1 --format='value(status.url)'`): cloud0's sign-in page asks for the `CLOUD0_PASSWORD` value, then keeps you signed in for 30 days. The deploy refuses to run without the secret and fails if a request without the password gets anything but `401`.
+
+**Data.** On Cloud Run cloud0 keeps its data in Cloud SQL (`CLOUD0_DATABASE_URL`), reached on the instance's private IP through Direct VPC egress, so every instance shares one database: nothing is lost on deploys, restarts, scale-to-zero or when Cloud Run briefly runs two instances. Each deploy runs the `cloud0-migrate` Cloud Run job (`cloud0 migrate up`) before the new revision takes traffic. The service scales from 0 to 3 instances on request-based billing (org policy). Local use keeps the SQLite file at `CLOUD0_DB_PATH`.

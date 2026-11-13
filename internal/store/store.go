@@ -1,8 +1,9 @@
-// Package store opens the SQLite file at CLOUD0_DB_PATH, applies the
-// connection pragmas, runs the embedded goose migrations and offers the small
-// set of helpers the repositories (snapshots, runs, settings, annotations —
-// Phase 1 slice S2) build on. SQL stays in the portable subset so a Postgres
-// driver can be swapped in by touching Open and the migrations directory only.
+// Package store opens the database — the SQLite file at CLOUD0_DB_PATH, or
+// Postgres when CLOUD0_DATABASE_URL is set (postgres.go) — runs the embedded
+// goose migrations for that dialect and offers the small set of helpers the
+// repositories (snapshots, runs, settings, annotations — Phase 1 slice S2)
+// build on. SQL stays in the portable subset, so the two dialects differ only
+// in Open and in the migrations directory (migrations/ vs migrations_postgres/).
 package store
 
 import (
@@ -19,15 +20,18 @@ import (
 
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite" // registers the cgo-free "sqlite" driver
+
+	"github.com/smallTechOrg/cloud0/internal/config"
 )
 
-//go:embed migrations/*.sql
+//go:embed migrations/*.sql migrations_postgres/*.sql
 var migrationsFS embed.FS
 
 // Store wraps the database handle and the migration provider.
 type Store struct {
-	DB   *sql.DB
-	path string
+	DB       *sql.DB
+	path     string
+	postgres bool
 }
 
 // MigrationInfo is one line of `cloud0 migrate status`.
@@ -38,9 +42,15 @@ type MigrationInfo struct {
 	AppliedAt time.Time // zero when pending
 }
 
-// Open creates the parent directory if needed and opens the SQLite file with
+// Open opens the database named by target: a Postgres URL
+// (postgres://user:pass@host:5432/db?sslmode=require), or a SQLite file
+// path, whose parent directory is created if needed and which is opened with
 // WAL journaling, a 5 s busy timeout and foreign keys enforced.
-func Open(ctx context.Context, path string) (*Store, error) {
+func Open(ctx context.Context, target string) (*Store, error) {
+	if config.IsPostgresURL(target) {
+		return openPostgres(ctx, target)
+	}
+	path := target
 	if path == "" {
 		return nil, errors.New("store: empty database path")
 	}
@@ -66,7 +76,23 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	return &Store{DB: db, path: path}, nil
 }
 
-// Path is the file the store was opened on.
+func openPostgres(ctx context.Context, url string) (*Store, error) {
+	connector, err := postgresConnector(url)
+	if err != nil {
+		return nil, fmt.Errorf("store: parse %s: %w", Redact(url), err)
+	}
+	db := sql.OpenDB(connector)
+	db.SetMaxOpenConns(8)
+	db.SetConnMaxIdleTime(5 * time.Minute)
+	if err := db.PingContext(ctx); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("store: connect %s: %w", Redact(url), err)
+	}
+	return &Store{DB: db, path: url, postgres: true}, nil
+}
+
+// Path is what the store was opened on: the SQLite file, or the Postgres URL
+// (with its password; print Redact(Path()) instead).
 func (s *Store) Path() string { return s.path }
 
 // Close releases the database handle.
@@ -76,11 +102,15 @@ func (s *Store) Close() error { return s.DB.Close() }
 func (s *Store) Ping(ctx context.Context) error { return s.DB.PingContext(ctx) }
 
 func (s *Store) provider() (*goose.Provider, error) {
-	sub, err := fs.Sub(migrationsFS, "migrations")
+	dir, dialect := "migrations", goose.DialectSQLite3
+	if s.postgres {
+		dir, dialect = "migrations_postgres", goose.DialectPostgres
+	}
+	sub, err := fs.Sub(migrationsFS, dir)
 	if err != nil {
 		return nil, fmt.Errorf("store: migrations fs: %w", err)
 	}
-	p, err := goose.NewProvider(goose.DialectSQLite3, s.DB, sub)
+	p, err := goose.NewProvider(dialect, s.DB, sub)
 	if err != nil {
 		return nil, fmt.Errorf("store: goose provider: %w", err)
 	}
@@ -170,12 +200,13 @@ func (s *Store) WithTx(ctx context.Context, fn func(tx *sql.Tx) error) (err erro
 	return fn(tx)
 }
 
-// LastInsertID is the one seam that reads the generated id; a Postgres
-// driver would switch this to a RETURNING clause.
-func LastInsertID(res sql.Result) (int64, error) {
-	id, err := res.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("store: last insert id: %w", err)
+// InsertID runs an INSERT and returns the generated id, through RETURNING:
+// both SQLite (3.35+) and Postgres support it, and Postgres has no
+// LastInsertId.
+func InsertID(ctx context.Context, q Querier, insert string, args ...any) (int64, error) {
+	var id int64
+	if err := q.QueryRowContext(ctx, insert+" RETURNING id", args...).Scan(&id); err != nil {
+		return 0, err
 	}
 	return id, nil
 }

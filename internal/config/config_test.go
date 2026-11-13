@@ -138,6 +138,8 @@ func TestLoad_RejectsInvalidValues(t *testing.T) {
 		{"currency digits", "CLOUD0_CURRENCY", "I2R"},
 		{"currency symbol", "CLOUD0_CURRENCY", "₹"},
 		{"e2e port bad", "CLOUD0_E2E_PORT", "99999"},
+		{"database URL not Postgres", "CLOUD0_DATABASE_URL", "mysql://u:p@h/db"},
+		{"Postgres URL in the SQLite path", "CLOUD0_DB_PATH", "postgres://u:placeholder@h:5432/db"},
 	}
 	for _, c := range cases {
 		m := minimal()
@@ -221,6 +223,35 @@ func TestLoad_ProposerSettings(t *testing.T) {
 	for k, v := range r {
 		if s, ok := v.(string); ok && strings.Contains(s, "placeholder-not-a-real-key") {
 			t.Errorf("redacted view leaks the API key under %q", k)
+		}
+	}
+}
+
+func TestLoad_PasswordIsOptionalAndNeverPrinted(t *testing.T) {
+	cfg, err := Load(env(minimal()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Password != "" || cfg.Redacted()["password"] != "unset" {
+		t.Errorf("unset password: set=%v redacted=%v", cfg.Password != "", cfg.Redacted()["password"])
+	}
+
+	m := minimal()
+	m["CLOUD0_PASSWORD"] = "  placeholder-password  "
+	cfg, err = Load(env(m))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Password != "placeholder-password" {
+		t.Errorf("password not read/trimmed")
+	}
+	r := cfg.Redacted()
+	if r["password"] != "set" {
+		t.Errorf("redacted password = %v, want set", r["password"])
+	}
+	for k, v := range r {
+		if s, ok := v.(string); ok && strings.Contains(s, "placeholder-password") {
+			t.Errorf("redacted view leaks the password under %q", k)
 		}
 	}
 }

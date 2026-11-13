@@ -1,6 +1,6 @@
 # cloud0 — Data
 
-Store: one SQLite file at `CLOUD0_DB_PATH` (engine choice and portability rules: `spec/architecture.md → Stack`). All timestamps are RFC3339 UTC text; all dates are `YYYY-MM-DD`; money is `REAL` in the export's currency (`CLOUD0_CURRENCY`, default INR); booleans are `INTEGER` 0/1. Schema changes only via numbered goose migrations in `internal/store/migrations/`.
+Store: one SQLite file at `CLOUD0_DB_PATH`, or Postgres when `CLOUD0_DATABASE_URL` is set (Cloud Run; engine choice and portability rules: `spec/architecture.md → Stack`). All timestamps are RFC3339 UTC text; all dates are `YYYY-MM-DD`; money is `REAL` in the export's currency (`CLOUD0_CURRENCY`, default INR); booleans are `INTEGER` 0/1. Schema changes only via numbered goose migrations in `internal/store/migrations/`.
 
 ## Entities
 
@@ -162,9 +162,11 @@ Phase 3 settings keys (no seed): `attribution.allocate`, `attribution.seed.alias
 
 Creates all six tables above with their indices and seeds the two `settings` rows. Later phases add migrations `0002_…` onward; nothing in Phase 1 alters 0001 after it is committed.
 
-## Portability (Postgres later)
+## Portability (SQLite and Postgres)
 
-- Types used: `INTEGER`, `REAL`, `TEXT` only; `AUTOINCREMENT` is the one SQLite-ism, isolated to the migration file (a `postgres/` goose directory would use `BIGSERIAL`).
-- No SQLite-only functions in queries (`strftime`, `json_*`, `RETURNING` avoided; last-insert id read via `sql.Result.LastInsertId()` behind a one-line seam in `store.go`).
-- `?` placeholders throughout; a Postgres driver would need a rebind helper in `store.go` only.
-- Repositories accept `*sql.DB`/`*sql.Tx` interfaces, so the engine swap touches `store.Open` and the migrations directory, nothing above.
+Both engines are supported (Postgres when `CLOUD0_DATABASE_URL` is set; Cloud Run uses Cloud SQL Postgres 17) and CI runs the whole Go suite on each.
+
+- Types used: `INTEGER`, `REAL`, `TEXT` only. `internal/store/migrations_postgres/` mirrors every SQLite migration with the same version: identity columns for `AUTOINCREMENT`, `BIGINT` for `INTEGER`, `DOUBLE PRECISION` for `REAL` (both 64-bit in SQLite); timestamps stay RFC3339 text and booleans `INTEGER` 0/1.
+- No engine-specific functions in queries (`strftime`, `json_*` avoided). Generated ids are read with `INSERT … RETURNING id` (`store.InsertID`), which both engines support.
+- `?` placeholders throughout; the Postgres connector (`store/postgres.go`) rebinds them to `$1…$n`.
+- Repositories accept `*sql.DB`/`*sql.Tx` interfaces, so nothing above `store.Open` and the migrations directories knows which engine is in use.

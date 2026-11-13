@@ -56,7 +56,7 @@ func (d Deps) handleHealth(w http.ResponseWriter, r *http.Request) *APIError {
 	if err := d.Store.Ping(ctx); err != nil {
 		resp.OK, resp.DB, resp.Migrations = false, "error", "unknown"
 		return ErrUnhealthy("Database is unreachable.", err).
-			WithHint("Check CLOUD0_DB_PATH and that the directory is writable, then restart cloud0.")
+			WithHint("Check CLOUD0_DATABASE_URL and that the database is reachable (Postgres), or CLOUD0_DB_PATH and that its directory is writable (SQLite), then restart cloud0.")
 	}
 	pending, err := d.Store.Pending(ctx)
 	if err != nil {

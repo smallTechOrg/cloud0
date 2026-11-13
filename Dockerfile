@@ -3,6 +3,8 @@
 # Migrate: docker run --rm --env-file .env -e CLOUD0_DB_PATH=/data/cloud0.db -v cloud0-data:/data cloud0 migrate up
 # Run:     docker run --rm --env-file .env -e CLOUD0_DB_PATH=/data/cloud0.db -v cloud0-data:/data -p 8087:8087 cloud0 serve
 # (Mount the service-account key read-only and point GOOGLE_APPLICATION_CREDENTIALS at it; on Cloud Run leave it unset.)
+# Cloud Run: the same image with CLOUD0_DATABASE_URL (Cloud SQL Postgres); the cloud0-migrate job runs `migrate up`
+# and the service runs `serve` (.github/workflows/deploy-cloudrun.yml).
 
 # --- 1. frontend: Next.js static export -------------------------------------
 FROM node:22-alpine AS web
