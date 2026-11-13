@@ -1,0 +1,42 @@
+{
+  "combiner": "OR",
+  "conditions": [
+    {
+      "conditionThreshold": {
+        "aggregations": [
+          {
+            "alignmentPeriod": "60s",
+            "crossSeriesReducer": "REDUCE_COUNT_FALSE",
+            "groupByFields": [
+              "metric.label.check_id"
+            ],
+            "perSeriesAligner": "ALIGN_NEXT_OLDER"
+          }
+        ],
+        "comparison": "COMPARISON_GT",
+        "duration": "1200s",
+        "filter": "metric.type = \"monitoring.googleapis.com/uptime_check/check_passed\" AND resource.type = \"uptime_url\" AND metric.labels.check_id = one_of(\"check-1\")",
+        "thresholdValue": 1,
+        "trigger": {
+          "count": 1
+        }
+      },
+      "displayName": "Uptime check failing for 20 min"
+    }
+  ],
+  "displayName": "cloud0: Service down (20 min)",
+  "documentation": {
+    "content": "**Service down (early warning).** An uptime check has been failing for 20 min (1 check(s) covered).\n\nWhat to check:\n- The endpoint from outside (curl the health URL) and the service/VM behind it.\n- Load balancer / DNS / TLS certificate state.\n- Recent deploys.\n\nThis is the warning policy; cloud0 runs a \"warning\" (10 min) and a \"critical\" (2 h) policy per project.\n\nManaged by cloud0 (template `uptime_down`, instance `warning`); edit it from the Alerts tab, not in the console.",
+    "mimeType": "text/markdown"
+  },
+  "enabled": true,
+  "notificationChannels": [
+    "projects/proj-a/notificationChannels/111"
+  ],
+  "severity": "ERROR",
+  "userLabels": {
+    "cloud0-instance": "warning",
+    "cloud0-template": "uptime_down",
+    "managed-by": "cloud0"
+  }
+}

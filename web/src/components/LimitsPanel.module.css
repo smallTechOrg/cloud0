@@ -1,0 +1,198 @@
+.panel {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+}
+
+.toolbar {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.warn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.input {
+  font: inherit;
+  width: 7rem;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  text-align: right;
+}
+
+.input:focus-visible,
+.save:focus-visible,
+.cancel:focus-visible,
+.secondary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.save,
+.cancel,
+.secondary {
+  font: inherit;
+  padding: 0.2rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.secondary {
+  padding: 0.3rem 0.8rem;
+}
+
+.save {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.save:disabled,
+.cancel:disabled,
+.secondary:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.error {
+  margin: 0.2rem 0 0;
+  color: var(--err);
+  font-size: 0.85rem;
+  white-space: normal;
+  max-width: 24rem;
+  text-align: right;
+}
+
+.editor,
+.allowance {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.stubRow td,
+.stubRow th {
+  color: var(--muted);
+  background: var(--stub-bg);
+}
+
+.reason {
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+.barCell {
+  min-width: 12rem;
+}
+
+.barWrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.track {
+  flex: 1;
+  height: 0.6rem;
+  background: #e5e7eb;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.fill {
+  display: block;
+  height: 100%;
+  background: #9ca3af;
+}
+
+.fill_ok {
+  background: var(--ok);
+}
+
+.fill_near {
+  background: #f59e0b;
+}
+
+.fill_over {
+  background: var(--err);
+}
+
+.pct {
+  font-variant-numeric: tabular-nums;
+  min-width: 3.5rem;
+  text-align: right;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.ok {
+  color: var(--text);
+  border-color: var(--border);
+  background: transparent;
+}
+
+.near {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #f59e0b;
+}
+
+.over {
+  background: #fee2e2;
+  color: #b42318;
+  border-color: #f87171;
+}
+
+.stub {
+  background: #f3f4f6;
+  color: var(--muted);
+  border-color: #d1d5db;
+}
+
+.nodata {
+  background: transparent;
+  color: var(--muted);
+  border: 1px dashed #9ca3af;
+}
+
+.skeleton {
+  height: 8rem;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s linear infinite;
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}

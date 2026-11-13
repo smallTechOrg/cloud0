@@ -1,0 +1,31 @@
+.panel {
+  border: 1px dashed var(--stub-border);
+  background: var(--stub-bg);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  max-width: 72ch;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: #fde68a;
+  color: #78350f;
+}
+
+.heading {
+  margin: 0.4rem 0 0.5rem;
+  font-size: 1.15rem;
+}
+
+.description {
+  margin: 0 0 0.5rem;
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+}

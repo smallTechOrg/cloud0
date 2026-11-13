@@ -1,0 +1,46 @@
+.nav {
+  display: flex;
+  flex-direction: column;
+  padding: 0.75rem 0;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+}
+
+.tab {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 1rem 0.45rem 1.25rem;
+  color: var(--text);
+  text-decoration: none;
+  border-left: 3px solid transparent;
+}
+
+.tab:hover {
+  background: var(--bg);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.active {
+  font-weight: 700;
+  border-left-color: var(--accent);
+}
+
+.stub {
+  color: var(--muted);
+}
+
+.phase {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: var(--stub-bg);
+  border: 1px solid var(--stub-border);
+  color: var(--warn);
+}

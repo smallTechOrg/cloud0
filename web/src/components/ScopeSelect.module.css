@@ -1,0 +1,29 @@
+.field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.label {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.select {
+  font: inherit;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  min-width: 14rem;
+}
+
+.select:disabled {
+  color: var(--muted);
+}
+
+.select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

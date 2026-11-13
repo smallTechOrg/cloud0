@@ -1,0 +1,238 @@
+# Deploys cloud0 to Cloud Run on every push to main or the v0.1 feature branch, after CI (tests + image smoke) passes.
+# Deployments go only through this workflow (push, or by hand: Actions -> deploy-cloud-run -> "Run workflow");
+# never deploy to GCP directly from a workstation. deploy/provision.sh sets up everything below once.
+#
+# Auth is keyless: Workload Identity Federation (provider `cloud0-github` in pool `github`, restricted to push and
+# workflow_dispatch runs of this repo on the branches below; DEPLOY_REFS in provision.sh) impersonating the shared
+# github-actions-deployer. The service runs as
+# cloud0-reader.
+# The repo is public, so every identifier comes from repository secrets: GCP_PROJECT_ID, GCP_PROJECT_NUMBER,
+# CLOUD0_GCP_PROJECTS, CLOUD0_BIGQUERY_PROJECT, CLOUD0_BILLING_EXPORT_TABLE, CLOUD0_PASSWORD, CLOUD0_DATABASE_URL,
+# and optionally CLOUD0_BILLING_ACCOUNT_ID, CLOUD0_OPENROUTER_API_KEY.
+#
+# Data lives in Cloud SQL (database cloud0 on the shared ai-agent-db Postgres instance, private IP, reached through
+# Direct VPC egress), so any number of instances share it and nothing is lost between them. Migrations run as the
+# cloud0-migrate Cloud Run job before the new revision takes traffic.
+#
+# The URL is public and CLOUD0_PASSWORD guards every page and API call (browsers sign in on /login; this workflow
+# uses HTTP Basic auth with no username). The deploy refuses to run without it, and the health check confirms a
+# request without it is turned away.
+name: deploy-cloud-run
+on:
+  push:
+    branches: [main, feature/cloud0-20261026-1851-v0.1]
+    paths-ignore: ["spec/**", "*.md"]
+  workflow_dispatch:
+    inputs:
+      drill_rollback:
+        description: "Drill: health-check a path that 404s so the rollback guard fires"
+        type: boolean
+        default: false
+concurrency: { group: cloud-run, cancel-in-progress: false }
+permissions: { contents: read, id-token: write }
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+    with:
+      image: false  # the deploy job builds, smoke-tests and pushes the image itself
+
+  deploy:
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:  # for the smoke test of the image before it is pushed
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: cloud0
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      REGION: us-central1
+      SERVICE: cloud0
+      PROJECT: ${{ secrets.GCP_PROJECT_ID }}
+      WORKLOAD_IDENTITY_PROVIDER: projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github/providers/cloud0-github
+      DEPLOY_SERVICE_ACCOUNT: github-actions-deployer@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+      DRILL_ROLLBACK: ${{ inputs.drill_rollback }}
+    steps:
+      - name: Check repository secrets
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_PROJECT_NUMBER: ${{ secrets.GCP_PROJECT_NUMBER }}
+          CLOUD0_GCP_PROJECTS: ${{ secrets.CLOUD0_GCP_PROJECTS }}
+          CLOUD0_BIGQUERY_PROJECT: ${{ secrets.CLOUD0_BIGQUERY_PROJECT }}
+          CLOUD0_BILLING_EXPORT_TABLE: ${{ secrets.CLOUD0_BILLING_EXPORT_TABLE }}
+          CLOUD0_PASSWORD: ${{ secrets.CLOUD0_PASSWORD }}
+          CLOUD0_DATABASE_URL: ${{ secrets.CLOUD0_DATABASE_URL }}
+        run: |
+          missing=""
+          for k in GCP_PROJECT_ID GCP_PROJECT_NUMBER CLOUD0_GCP_PROJECTS CLOUD0_BIGQUERY_PROJECT CLOUD0_BILLING_EXPORT_TABLE CLOUD0_PASSWORD CLOUD0_DATABASE_URL; do
+            [ -n "${!k}" ] || missing="$missing $k"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secrets:$missing. Run deploy/provision.sh once (README -> Deploy to Cloud Run)."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.DEPLOY_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT }}
+
+      - name: Image name
+        id: image
+        run: |
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+          echo "ref=${REGION}-docker.pkg.dev/${PROJECT}/cloud0/cloud0:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: ${{ steps.image.outputs.ref }}
+          cache-from: type=gha,scope=cloud0
+          cache-to: type=gha,scope=cloud0,mode=max
+      - name: Smoke test it against Postgres
+        run: bash deploy/smoke-image.sh "${{ steps.image.outputs.ref }}" 'postgres://postgres:postgres@127.0.0.1:5432/cloud0?sslmode=disable'
+      - name: Push the tested image
+        run: docker push "${{ steps.image.outputs.ref }}"
+
+      - name: Previous serving revision (for the rollback guard)
+        run: |
+          PREV="$(gcloud run services describe "$SERVICE" --region "$REGION" --format=json 2>/dev/null \
+            | jq -r '[.status.traffic[]? | select((.percent // 0) > 0 and .revisionName)][0].revisionName // empty' || true)"
+          echo "Previous revision: ${PREV:-<none, first deploy>}"
+          echo "PREV=${PREV}" >> "$GITHUB_ENV"
+
+      - name: Runtime config
+        env:
+          CLOUD0_GCP_PROJECTS: ${{ secrets.CLOUD0_GCP_PROJECTS }}
+          CLOUD0_BIGQUERY_PROJECT: ${{ secrets.CLOUD0_BIGQUERY_PROJECT }}
+          CLOUD0_BILLING_EXPORT_TABLE: ${{ secrets.CLOUD0_BILLING_EXPORT_TABLE }}
+          CLOUD0_BILLING_ACCOUNT_ID: ${{ secrets.CLOUD0_BILLING_ACCOUNT_ID }}
+          CLOUD0_OPENROUTER_API_KEY: ${{ secrets.CLOUD0_OPENROUTER_API_KEY }}
+          CLOUD0_PASSWORD: ${{ secrets.CLOUD0_PASSWORD }}
+          CLOUD0_DATABASE_URL: ${{ secrets.CLOUD0_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          # Apply (alert policies, budgets) needs the alerts-writer key; it is mounted only when provision.sh stored it.
+          ALERTS_KEY_VERSION="$(gcloud secrets versions list cloud0-alerts-key --filter=state=ENABLED --limit=1 --format='value(name)' 2>/dev/null || true)"
+          if [ -n "$ALERTS_KEY_VERSION" ]; then
+            echo "ALERTS_SECRET=/secrets/alerts/key.json=cloud0-alerts-key:latest" >> "$GITHUB_ENV"
+            export CLOUD0_ALERTS_CREDENTIALS=/secrets/alerts/key.json
+          else
+            echo "::notice::No cloud0-alerts-key secret: Alerts, Incidents and Budgets stay read-only."
+          fi
+
+          # YAML env file (not --set-env-vars): CLOUD0_GCP_PROJECTS holds commas. It replaces every variable each
+          # deploy and is shared by the migrate job and the service. RUNNER_TEMP is wiped when the job ends.
+          ENV_FILE="${RUNNER_TEMP}/cloud0-env.yaml"
+          echo "ENV_FILE=${ENV_FILE}" >> "$GITHUB_ENV"
+          python3 - "$ENV_FILE" <<'PY'
+          import json, os, sys
+          env = {k: os.environ[k] for k in ["CLOUD0_GCP_PROJECTS", "CLOUD0_BIGQUERY_PROJECT", "CLOUD0_BILLING_EXPORT_TABLE", "CLOUD0_PASSWORD", "CLOUD0_DATABASE_URL"]}
+          env.update({k: os.environ[k] for k in ["CLOUD0_BILLING_ACCOUNT_ID", "CLOUD0_OPENROUTER_API_KEY", "CLOUD0_ALERTS_CREDENTIALS"] if os.environ.get(k)})
+          env.update(CLOUD0_LOG_LEVEL="info")
+          open(sys.argv[1], "w").write("".join(f"{k}: {json.dumps(v)}\n" for k, v in env.items()))
+          PY
+
+      - name: Run migrations (before the new revision takes traffic)
+        env:
+          IMAGE: ${{ steps.image.outputs.ref }}
+        run: |
+          set -euo pipefail
+          gcloud run jobs deploy cloud0-migrate --region "$REGION" --image "$IMAGE" --args migrate,up \
+            --service-account "cloud0-reader@${PROJECT}.iam.gserviceaccount.com" \
+            --network default --subnet default --vpc-egress private-ranges-only \
+            --cpu 1 --memory 512Mi --max-retries 0 --task-timeout 300 \
+            --env-vars-file "$ENV_FILE" --quiet
+          gcloud run jobs execute cloud0-migrate --region "$REGION" --wait
+
+      - name: Deploy
+        id: deploy
+        env:
+          IMAGE: ${{ steps.image.outputs.ref }}
+        run: |
+          set -euo pipefail
+          SECRET_FLAGS=()
+          if [ -n "${ALERTS_SECRET:-}" ]; then SECRET_FLAGS=(--update-secrets="$ALERTS_SECRET"); fi
+
+          # Revisions are named after the commit; a re-run of the same commit (e.g. a drill) must not collide.
+          SUFFIX="sha-${GITHUB_SHA::7}"
+          if gcloud run revisions list --service "$SERVICE" --region "$REGION" --format='value(metadata.name)' 2>/dev/null \
+               | grep -qx "${SERVICE}-${SUFFIX}"; then
+            SUFFIX="${SUFFIX}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          fi
+          echo "NEW_REVISION=${SERVICE}-${SUFFIX}" >> "$GITHUB_ENV"
+
+          # Request-based billing (org policy custom.denyInstanceBilling) and scale to zero; the data is in Cloud SQL,
+          # reached on its private IP through Direct VPC egress, so instances are interchangeable.
+          gcloud run deploy "$SERVICE" --region "$REGION" --image "$IMAGE" \
+            --service-account "cloud0-reader@${PROJECT}.iam.gserviceaccount.com" \
+            --allow-unauthenticated --port 8087 --execution-environment gen2 \
+            --cpu 1 --memory 512Mi --min-instances 0 --max-instances 3 --cpu-throttling --no-cpu-boost \
+            --concurrency 80 --timeout 900 --revision-suffix "$SUFFIX" \
+            --network default --subnet default --vpc-egress private-ranges-only \
+            --env-vars-file "$ENV_FILE" "${SECRET_FLAGS[@]}" --quiet
+          # After a rollback, traffic stays pinned to the old revision; send it to this one.
+          gcloud run services update-traffic "$SERVICE" --region "$REGION" --to-latest --quiet
+
+          echo "url=$(gcloud run services describe "$SERVICE" --region "$REGION" --format 'value(status.url)')" >> "$GITHUB_OUTPUT"
+
+      - name: Health check
+        env:
+          URL: ${{ steps.deploy.outputs.url }}
+          CLOUD0_PASSWORD: ${{ secrets.CLOUD0_PASSWORD }}
+        run: |
+          set -uo pipefail
+          HEALTH_PATH=/api/v1/health
+          if [ "${DRILL_ROLLBACK:-false}" = true ]; then
+            HEALTH_PATH=/api/v1/health-drill-404
+            echo "::warning::DRILL: probing ${HEALTH_PATH}; this run is expected to fail and roll back."
+          fi
+          BODY="$(mktemp)"
+          check() { local path="$1"; shift; curl -s -m 60 -o "$BODY" -w '%{http_code}' "$@" "${URL}${path}" || true; }
+          # cloud0's own 401 is its JSON envelope; Google's front end answers 401/403 with an HTML page.
+          from_cloud0() { jq -e '.error.code == "unauthorized" or .error.code == "invalid_password"' "$BODY" >/dev/null 2>&1; }
+
+          # Making the service public can take a minute or two to apply: until then the front end still expects a
+          # Google token and turns the request away before cloud0 sees it. Wait that out (and a starting instance);
+          # anything cloud0 itself answers other than 200 is a real failure.
+          for i in $(seq 1 24); do
+            code="$(check "$HEALTH_PATH" -u ":${CLOUD0_PASSWORD}")"
+            case "$code" in
+              200) break ;;
+              401) if from_cloud0; then echo "::error::cloud0 rejected the CLOUD0_PASSWORD secret"; exit 1; fi ;;
+              403|000|5??) ;;
+              *) echo "::error::${HEALTH_PATH} answered ${code}: $(head -c 300 "$BODY")"; exit 1 ;;
+            esac
+            echo "attempt $i: $code (service or its public access not ready yet)"
+            sleep 10
+          done
+          [ "$code" = 200 ] || { echo "::error::health check failed (last status $code)"; exit 1; }
+          echo "healthy: $(jq -c '{ok, version, db, migrations, ui, bigquery: .bigquery.status}' "$BODY")"
+
+          # The URL is public: make sure cloud0's password really guards it.
+          code="$(check "$HEALTH_PATH")"
+          if [ "$code" != 401 ] || ! from_cloud0; then
+            echo "::error::A request without the password got $code, want cloud0's 401"; exit 1
+          fi
+          echo "without the password: cloud0 answers 401 as expected"
+
+          serving="$(gcloud run services describe "$SERVICE" --region "$REGION" --format=json \
+            | jq -r '[.status.traffic[] | select((.percent // 0) > 0)][0].revisionName')"
+          [ "$serving" = "$NEW_REVISION" ] || { echo "::error::serving $serving, deployed $NEW_REVISION"; exit 1; }
+          echo "serving: $serving"
+
+      - name: Roll back to the previous revision
+        if: failure() && env.PREV != ''
+        run: |
+          echo "::error::Deploy failed: sending all traffic back to ${PREV}"
+          gcloud run services update-traffic "$SERVICE" --region "$REGION" --to-revisions "${PREV}=100" --quiet

@@ -1,0 +1,271 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.title {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.export {
+  font: inherit;
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.export:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.section {
+  margin-bottom: 1rem;
+}
+
+.heading {
+  margin: 0 0 0.3rem;
+  font-size: 1rem;
+}
+
+.scroller {
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.table th,
+.table td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.35rem 0.6rem;
+  vertical-align: top;
+}
+
+.table thead th {
+  background: #eef1f5;
+  font-weight: 600;
+}
+
+.svcHead,
+.svcCell {
+  text-align: left;
+  min-width: 11rem;
+}
+
+.svcCell {
+  font-weight: 600;
+}
+
+.project {
+  display: block;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.numHead {
+  text-align: right;
+}
+
+.count {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.emph4 {
+  background: #fff4d6;
+  box-shadow: inset 3px 0 0 var(--warn);
+  color: var(--warn);
+  font-weight: 700;
+}
+
+.emph5 {
+  background: #fde8e6;
+  box-shadow: inset 3px 0 0 var(--err);
+  color: var(--err);
+  font-weight: 700;
+}
+
+.totalRow th,
+.totalRow td {
+  background: #f8fafc;
+  font-weight: 700;
+  border-top: 2px solid var(--border);
+}
+
+.cellButton {
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  background: none;
+  border: none;
+  padding: 0.1rem 0.25rem;
+  margin: -0.1rem -0.25rem;
+  color: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+  text-align: right;
+  border-radius: 4px;
+}
+
+.cellButton:hover {
+  background: #dbe4ff;
+}
+
+.cellButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.gapCell {
+  text-align: right;
+}
+
+.gapText {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.inlineHint {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.emptyRow {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+  gap: 0.75rem;
+}
+
+.card {
+  border: 1px solid var(--stub-border);
+  border-left: 4px solid var(--warn);
+  background: var(--stub-bg);
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem;
+}
+
+.cardTitle {
+  margin: 0 0 0.3rem;
+  font-size: 0.95rem;
+}
+
+.cardGap {
+  margin: 0.2rem 0;
+  color: var(--muted);
+}
+
+.gapBadge {
+  display: inline-block;
+  padding: 0 0.4rem;
+  border: 1px solid var(--stub-border);
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--warn);
+  background: #fff;
+}
+
+.cardHint {
+  margin: 0.3rem 0;
+  font-size: 0.95rem;
+}
+
+.cardCounts {
+  margin: 0.2rem 0;
+}
+
+.link {
+  font: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.loading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.skeleton {
+  display: block;
+  height: 2rem;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s linear infinite;
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.how {
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 0.5rem 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.howSummary {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.howText {
+  margin: 0.4rem 0 0.1rem;
+  line-height: 1.45;
+  font-size: 0.9rem;
+}
+
+.allHeading {
+  margin: 1.2rem 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.codesHint {
+  margin: 0 0 0.8rem;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--stub-border);
+  border-radius: 6px;
+  background: var(--stub-bg);
+  font-size: 0.9rem;
+}

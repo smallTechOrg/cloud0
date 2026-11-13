@@ -1,0 +1,41 @@
+{
+  "combiner": "OR",
+  "conditions": [
+    {
+      "conditionThreshold": {
+        "aggregations": [
+          {
+            "alignmentPeriod": "600s",
+            "crossSeriesReducer": "REDUCE_SUM",
+            "groupByFields": [
+              "resource.labels.url_map_name"
+            ],
+            "perSeriesAligner": "ALIGN_DELTA"
+          }
+        ],
+        "comparison": "COMPARISON_GT",
+        "duration": "0s",
+        "filter": "metric.type=\"loadbalancing.googleapis.com/https/request_count\" AND resource.type=\"https_lb_rule\" AND metric.labels.response_code_class=500",
+        "thresholdValue": 5,
+        "trigger": {
+          "count": 1
+        }
+      },
+      "displayName": "Load balancer 5xx burst: more than 5 in 10 min"
+    }
+  ],
+  "displayName": "cloud0: Load balancer 5xx burst",
+  "documentation": {
+    "content": "More than the configured number of HTTP 5xx responses were returned by an external HTTP(S) load balancer within the window. Each URL map is evaluated separately.\n\n**First look:** check backend health in the load balancer page, then the Cloud Run **Errors** tab in cloud0 and Logs Explorer (`resource.type=\"http_load_balancer\"`).",
+    "mimeType": "text/markdown"
+  },
+  "enabled": true,
+  "notificationChannels": [
+    "projects/proj-a/notificationChannels/1"
+  ],
+  "severity": "ERROR",
+  "userLabels": {
+    "cloud0-template": "lb_5xx_burst",
+    "managed-by": "cloud0"
+  }
+}

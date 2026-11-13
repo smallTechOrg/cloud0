@@ -1,0 +1,7 @@
+Propose at most {{MAX_RULES}} rules.
+
+Existing rules (JSON lines: field op key value -> action):
+{{EXISTING}}
+
+Unattributed resources (JSON lines, rank 1 = most expensive):
+{{RESOURCES}}

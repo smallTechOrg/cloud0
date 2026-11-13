@@ -1,0 +1,85 @@
+.section {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  max-width: 80ch;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.4rem;
+}
+
+.heading {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.indicator {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.textarea {
+  width: 100%;
+  font: inherit;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  resize: vertical;
+  min-height: 4.5rem;
+}
+
+.textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.foot {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.4rem;
+}
+
+.counter {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.counterOver {
+  color: var(--err);
+  font-weight: 700;
+}
+
+.error {
+  color: var(--err);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.save {
+  margin-left: auto;
+  font: inherit;
+  font-weight: 600;
+  padding: 0.3rem 0.8rem;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+.save:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.save:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
