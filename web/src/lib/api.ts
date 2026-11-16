@@ -6,6 +6,8 @@
 import type {
   AdoptPreview,
   AdoptRequest,
+  DailyBy,
+  DailyResponse,
   AlertHistoryResponse,
   AlertPreview,
   AlertsStatus,
@@ -167,6 +169,10 @@ export function getConfig(): Promise<AppConfig> {
 
 export function getCostTable(params: { scope?: Scope; from?: WeekID; to?: WeekID } = {}): Promise<CostTableResponse> {
   return request<CostTableResponse>(`/cost/table${query(params)}`);
+}
+
+export function getDaily(params: { scope?: Scope; from?: string; to?: string; days?: number; by?: DailyBy; top?: number } = {}): Promise<DailyResponse> {
+  return request<DailyResponse>(`/cost/daily${query(params)}`);
 }
 
 export function postRefresh(body: RefreshRequest): Promise<RefreshResponse> {

@@ -63,12 +63,13 @@ SELECT
   TO_JSON_STRING(system_labels) AS system_labels_json,
   SUM(cost)             AS gross,
   SUM((SELECT IFNULL(SUM(c.amount), 0) FROM UNNEST(credits) AS c)) AS credits,
-  COUNT(*)              AS line_items
+  COUNT(*)              AS line_items,
+  DATE(usage_start_time) AS usage_date
 FROM `<CLOUD0_BILLING_EXPORT_TABLE>`
 WHERE DATE(_PARTITIONTIME) BETWEEN @part_start AND @part_end
   AND usage_start_time >= @usage_start
   AND usage_start_time <  @usage_end
-GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11
+GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, usage_date
 ```
 
 - Phase 3 adds `labels_json` / `system_labels_json` (`TO_JSON_STRING` of the export's repeated `labels` / `system_labels`, e.g. `[{"key":"env","value":"prod"}]`; `[]` when none) so attribution rules can match GCP labels; they are grouped on, so a resource whose label set changes mid-week yields two rows (sums unchanged). Snapshots fetched before migration 0005 have NULL label columns.

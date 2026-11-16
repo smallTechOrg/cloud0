@@ -64,5 +64,6 @@ func registerRoutes(mux *http.ServeMux, deps Deps) {
 	r.handle(http.MethodGet, apiPrefix+"/cost/month", deps.handleCostMonth)
 	deps.registerAlertRoutes(r)
 	deps.registerAttributionRoutes(r)
+	deps.registerDaily(r)
 	r.finish()
 }

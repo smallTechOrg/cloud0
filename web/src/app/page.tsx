@@ -9,6 +9,7 @@ import AttributionPanel from '@/components/AttributionPanel';
 import BudgetsPanel from '@/components/BudgetsPanel';
 import CostByDimension from '@/components/CostByDimension';
 import WeeklyByDimension from '@/components/WeeklyByDimension';
+import DailyChart from '@/components/DailyChart';
 import type { AllocateMode } from '@/lib/attributionTypes';
 import { EmptyState } from '@/components/EmptyState';
 import IncidentsPanel from '@/components/IncidentsPanel';
@@ -503,6 +504,8 @@ export default function Page() {
                   </button>
                 </div>
               </div>
+
+              {config ? <DailyChart scope={scope} refreshToken={tableVersion} /> : null}
 
               <div role="group" aria-label="Cost view" data-testid="cost-dimension-toggle" className={styles.toolbarActions}>
                 {(['service', 'product', 'environment'] as const).map((d) => (

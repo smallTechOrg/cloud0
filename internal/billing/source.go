@@ -112,6 +112,10 @@ type Row struct {
 	Credits          float64
 	Net              float64
 	LineItems        int64
+	// UsageDate is DATE(usage_start_time) as YYYY-MM-DD (UTC). The refresh
+	// sums rows across dates into the weekly snapshot and keeps the per-day
+	// split for the daily chart. Empty when a source does not report dates.
+	UsageDate string
 }
 
 // Week is the ISO week the row belongs to.
@@ -256,6 +260,7 @@ type bqRow struct {
 	Gross              bigquery.NullFloat64 `bigquery:"gross"`
 	Credits            bigquery.NullFloat64 `bigquery:"credits"`
 	LineItems          bigquery.NullInt64   `bigquery:"line_items"`
+	UsageDate          bigquery.NullDate    `bigquery:"usage_date"`
 }
 
 func readRows(it *bigquery.RowIterator) ([]Row, error) {
@@ -291,7 +296,15 @@ func (r bqRow) toRow() Row {
 		Credits:            credits,
 		Net:                gross + credits,
 		LineItems:          r.LineItems.Int64,
+		UsageDate:          usageDate(r.UsageDate),
 	}
+}
+
+func usageDate(d bigquery.NullDate) string {
+	if !d.Valid {
+		return ""
+	}
+	return d.Date.String()
 }
 
 func nullable(s bigquery.NullString) *string {

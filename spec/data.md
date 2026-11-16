@@ -170,3 +170,7 @@ Both engines are supported (Postgres when `CLOUD0_DATABASE_URL` is set; Cloud Ru
 - No engine-specific functions in queries (`strftime`, `json_*` avoided). Generated ids are read with `INSERT … RETURNING id` (`store.InsertID`), which both engines support.
 - `?` placeholders throughout; the Postgres connector (`store/postgres.go`) rebinds them to `$1…$n`.
 - Repositories accept `*sql.DB`/`*sql.Tx` interfaces, so nothing above `store.Open` and the migrations directories knows which engine is in use.
+
+## Daily rows (migration 0006)
+
+`snapshot_daily_rows` (`snapshot_id` → `snapshots.id` ON DELETE CASCADE, `usage_date` TEXT `YYYY-MM-DD`, `project_id`, `service`, `sku`, `resource_name`, `resource_global_name`, `labels_json`, `gross`, `credits`, `net`) holds each snapshot's cost split by UTC usage date, written in the same transaction as the snapshot. The weekly `snapshot_rows` are the same rows summed over dates, so the two always reconcile. Snapshots fetched before 0006 have no daily rows; refreshing the week fills them.

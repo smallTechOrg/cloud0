@@ -1,0 +1,33 @@
+.panel { display: grid; gap: 0.5rem; padding: 0.75rem 0; border-bottom: 1px solid var(--border); margin-bottom: 0.5rem; }
+.head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.75rem; }
+.title { font-weight: 600; }
+.meta { color: var(--muted); font-weight: 400; }
+.controls { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.controls label { display: inline-flex; gap: 0.35rem; align-items: center; color: var(--muted); font-size: 0.9rem; }
+.controls select, .button { font: inherit; padding: 0.25rem 0.6rem; border-radius: 6px; border: 1px solid var(--border); background: var(--panel); color: var(--text); }
+.button { cursor: pointer; }
+.button:disabled { opacity: 0.55; cursor: default; }
+.chartWrap { position: relative; }
+.svg { display: block; width: 100%; height: auto; overflow: visible; }
+.grid { stroke: var(--border); stroke-width: 1; }
+.axis { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.noData { fill: url(#daily-nodata); stroke: var(--border); stroke-dasharray: 3 3; }
+.hit { fill: transparent; cursor: default; }
+.hitActive { fill: rgba(31, 94, 255, 0.06); }
+.tooltip { position: absolute; top: 0; pointer-events: none; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12); padding: 0.5rem 0.65rem; font-size: 0.85rem; min-width: 12rem; z-index: 2; }
+.tooltip table { border-collapse: collapse; width: 100%; }
+.tooltip td { padding: 0.1rem 0.25rem; }
+.tooltip td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.tipTotal td { border-top: 1px solid var(--border); font-weight: 600; }
+.swatch { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 3px; margin-right: 0.35rem; vertical-align: -1px; }
+.legend { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; list-style: none; margin: 0; padding: 0; font-size: 0.85rem; }
+.legend li { white-space: nowrap; }
+.legendValue { color: var(--muted); margin-left: 0.3rem; font-variant-numeric: tabular-nums; }
+.note { color: var(--muted); font-size: 0.85rem; margin: 0; }
+.err { color: var(--err); margin: 0; }
+.skeleton { height: 240px; border-radius: 8px; background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%); background-size: 200% 100%; animation: shimmer 1.2s linear infinite; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+.tableWrap { overflow-x: auto; }
+.table { border-collapse: collapse; font-size: 0.85rem; }
+.table th, .table td { padding: 0.2rem 0.5rem; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.table th:first-child, .table td:first-child { text-align: left; }
