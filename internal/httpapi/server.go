@@ -9,6 +9,7 @@ import (
 
 	"github.com/smallTechOrg/cloud0/internal/config"
 	"github.com/smallTechOrg/cloud0/internal/errorsrc"
+	"github.com/smallTechOrg/cloud0/internal/labeler"
 	"github.com/smallTechOrg/cloud0/internal/logging"
 	"github.com/smallTechOrg/cloud0/internal/refresh"
 	"github.com/smallTechOrg/cloud0/internal/store"
@@ -39,6 +40,9 @@ type Deps struct {
 	Alerts *AlertsDeps
 	// Attribution wires the Phase 3 endpoints; nil answers 503 attribution_not_configured.
 	Attribution *AttributionDeps
+	// Labeler writes GCP labels for /labels/preview and /labels/apply; nil
+	// answers 503 labels_not_configured (the UI then shows gcloud commands only).
+	Labeler labeler.Client
 }
 
 func (d Deps) now() time.Time {

@@ -13,4 +13,5 @@ func (d Deps) registerAttributionRoutes(r *router) {
 	d.registerAttributionWeekly(r)
 	d.registerAttributionTargets(r)
 	d.registerAttributionRightsizing(r)
+	d.registerLabels(r)
 }

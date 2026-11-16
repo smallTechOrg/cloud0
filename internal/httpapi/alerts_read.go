@@ -886,7 +886,7 @@ func (d Deps) handleBudgetSuggestions(w http.ResponseWriter, r *http.Request) *A
 // ---- change history ------------------------------------------------------------
 
 var historyKinds = []string{alerting.TargetPolicy, alerting.TargetUptimeCheck, alerting.TargetBudget,
-	alerting.TargetSnooze, alerting.TargetChannel, alerting.TargetRouting}
+	alerting.TargetSnooze, alerting.TargetChannel, alerting.TargetRouting, attrChangeKind, labelsChangeKind}
 
 func (d Deps) handleChangeHistory(w http.ResponseWriter, r *http.Request) *APIError {
 	q := r.URL.Query()

@@ -17,6 +17,7 @@ import (
 	"github.com/smallTechOrg/cloud0/internal/config"
 	"github.com/smallTechOrg/cloud0/internal/httpapi"
 	"github.com/smallTechOrg/cloud0/internal/isoweek"
+	"github.com/smallTechOrg/cloud0/internal/labeler"
 	"github.com/smallTechOrg/cloud0/internal/store"
 )
 
@@ -140,4 +141,22 @@ func buildAttribution(ctx context.Context, cfg config.Config, logger *slog.Logge
 		onClose(func() { _ = closeFn() })
 	}
 	return deps
+}
+
+// buildLabeler wires GCP label writes. It needs its own least-privilege
+// service-account key (CLOUD0_LABELS_CREDENTIALS); without it the endpoints
+// answer 503 labels_not_configured and the UI shows gcloud commands only.
+func buildLabeler(ctx context.Context, logger *slog.Logger) labeler.Client {
+	path := strings.TrimSpace(os.Getenv(labeler.EnvCredentials))
+	if path == "" {
+		logger.Info("labels.ready", slog.Bool("writable", false))
+		return nil
+	}
+	c, err := labeler.NewREST(ctx, path)
+	if err != nil {
+		logger.Error("labels.client", slog.String("error", err.Error()))
+		return nil
+	}
+	logger.Info("labels.ready", slog.Bool("writable", true))
+	return c
 }

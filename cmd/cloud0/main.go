@@ -295,7 +295,8 @@ func serve() int {
 	deps := httpapi.Deps{Config: cfg, Store: st, Logger: logger, Version: version, Refresh: runner, Samples: samples,
 		BigQuery:    func() *httpapi.BigQueryHealth { h := bqHealth; return &h },
 		Alerts:      buildAlerts(ctx, cfg, st, logger, onClose),
-		Attribution: buildAttribution(ctx, cfg, logger, onClose)}
+		Attribution: buildAttribution(ctx, cfg, logger, onClose),
+		Labeler:     buildLabeler(ctx, logger)}
 	srv := httpapi.New(deps)
 
 	ln, err := net.Listen("tcp", cfg.Addr())

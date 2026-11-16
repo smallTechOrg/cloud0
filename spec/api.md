@@ -832,3 +832,20 @@ The user accepts a proposal by including its `rule` (source `proposed`) in a nor
 
 ### Settings keys (Phase 3, table `settings`, no seed rows)
 `attribution.allocate` (`none|even|proportional`, default `none`), `attribution.seed.aliases` (JSON object), `rightsizing.cpu_pct`, `rightsizing.weeks`, `rightsizing.stale_snapshot_days`, `rightsizing.idle_run_min_net`.
+
+
+## Assign products and GCP labels
+
+Same envelope, `WeekID`/`Scope` handling and error codes as the attribution endpoints. Go: `internal/attribution/resources.go`, `internal/labeler`, `internal/httpapi/labels.go`. TypeScript: `web/src/lib/attributionTypes.ts` (bottom).
+
+### `GET /api/v1/attribution/resources`
+Query: `week`, `scope`. Every billed resource of the latest snapshot, **grouped** by project + last path segment of the resource name (a VM `projects/N/instances/x` and its disk `x` are one group); resource-less rows group by project + service + SKU. 200: `{week, scope, snapshot, labels_captured, total_net, count, truncated, groups[], products[], environments[], label_writer: {enabled, hint?}}`. Each group: `{id, name, kind: resource|sku, project_id, services[], net, share_pct, labels{} (GCP labels on the billing rows), product, environment, shared, source: label|rule|shared|none, rule_id, match{field,op,value} (the rule match that covers the whole group), members[], targets[], suggested}`. `targets[]` are the GCP resources cloud0 can label: `{project, type, name, location?, resource, writable, note?}` (`type` ∈ compute_instance | compute_disk | cloud_run_service | cloud_run_job | gcs_bucket | cloud_sql_instance | …; `writable: false` with a `note` otherwise). `products[]` is the catalog for the dropdown. At most 1500 groups (`truncated`).
+
+### `POST /api/v1/labels/preview` · `POST /api/v1/labels/apply`
+Body: `{"items": [{"target": {"project", "type", "name", "location"?}, "labels": {"product": "x", "env": "prod"}}], "preview_hash"?}` (1–100 items, 1–8 labels each; keys/values `[a-z0-9_-]`, max 63, key starts with a letter). `503 labels_not_configured` without `CLOUD0_LABELS_CREDENTIALS`.
+- **preview** reads the live labels of every item and writes nothing. 200: `{preview_hash, items[], changes, applied, failed, note}`; each item `{target, current{}, add{}, diff[{key,before,after,change: add|change|same}], noop, command (gcloud), terraform, risk, error: {code,message,hint}|null}`. `error.code` ∈ `resource_not_found | permission_denied | api_disabled | conflict | invalid_target | failed`.
+- **apply** requires the `preview_hash` from a preview of the same items; it re-reads the live labels and answers `409 preview_stale` if they differ (nothing written). It then merges per item (other labels untouched, read back and verified), never aborting the batch on one failure (`applied`/`failed` counts, per-item `error`, `after`), and records one `change_history` row per written resource (`kind: "labels"`, `GET /history?kind=labels`).
+- Cloud Run services and jobs answer `permission_denied` with the act-as explanation: cloud0 does not hold `iam.serviceaccounts.actAs`; use the `command` / `terraform` fields instead.
+
+### `GET /api/v1/attribution/export`
+Query: `week`, `scope`, `format=csv|json` (default json). One row per group with FOCUS-style columns: `ChargePeriodStart`, `ChargePeriodEnd` (exclusive), `SubAccountId` (project), `ResourceName`, `ServiceName`, `EffectiveCost`, `BillingCurrency`, `Tags` (JSON object: the GCP labels plus the resolved `product`/`env`), `x_Product`, `x_Environment`, `x_AttributionSource`. Sent as a download.
