@@ -40,6 +40,7 @@ type Column struct {
 	Services []string   `json:"services,omitempty"` // raw service.description values aggregated
 	Extra    bool       `json:"extra,omitempty"`    // not in the sheet; present only when non-zero in the range
 	Phase    int        `json:"phase,omitempty"`    // stub columns: the phase that fills them
+	Group    string     `json:"group,omitempty"`    // grouped tables: product | environment | shared | unattributed
 }
 
 var weekColumn = Column{Key: KeyWeek, Label: "Week", Kind: KindWeek}

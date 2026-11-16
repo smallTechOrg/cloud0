@@ -711,6 +711,17 @@ Query: `week`, `scope`, `allocate` (`none|even|proportional`; default the persis
 - Errors: `400 invalid_allocate|invalid_dimension|invalid_week|week_out_of_range|invalid_scope`.
 - Drill-down: `GET /api/v1/snapshots/{id}/breakdown` additionally accepts `product` and `environment` (names, `(shared)`, `(unattributed)`, `(no environment)`); rows are first filtered through the engine; totals reconcile to the group cell. Invalid names → `400 invalid_dimension`.
 
+### `GET /api/v1/cost/by-product/weeks` · `GET /api/v1/cost/by-environment/weeks`
+
+Weekly product (or environment) table: exactly the `GET /cost/table` response shape (`scope`, `from`, `to`, `generated_at`, `thresholds`, `columns`, `rows` with `snapshot`, `cells`, `delta_abs`/`delta_pct`, `flagged`, `pct_change`, `annotation`), plus `dimension` and `allocate`.
+
+Query: `from`, `to` (WeekIDs, same defaults and `week_out_of_range` rules as `/cost/table`), `scope`, `allocate` (`none|even|proportional`; default the persisted `attribution.allocate`).
+
+- Value columns are the attribution groups seen in any snapshot of `from−1 … to`: products (or environments) ordered by the range's net desc, then `(shared)` (omitted when allocation empties it), then `(unattributed)` / `(no environment)`. Each column has `kind: "service"` (a value column; kept for renderer compatibility) and `group: product|environment|shared|unattributed`. `total` and `pct_change` follow; no vendor columns.
+- Each week's cells come from the same `BuildBreakdown` as `/cost/by-product?week=` for that week's latest snapshot, so `cells.total.net` equals the service table's total for the week (allocation moves money between columns, never in or out). `gross`/`credits` are the direct (pre-allocation) values.
+- Deltas and flags follow `anomaly-flags.md` per column against the previous week's latest snapshot.
+- Errors: `400 invalid_week | week_out_of_range | invalid_scope | invalid_allocate`; `503 attribution_not_configured`.
+
 ### `GET /api/v1/attribution/label-suggestions`
 Query: `week`, `scope`, `limit` (default 200, max 1000). 200:
 ```json

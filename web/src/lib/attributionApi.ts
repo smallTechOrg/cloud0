@@ -5,7 +5,7 @@
 // ones).
 
 import { request } from './api';
-import type { Scope, WeekID } from './types';
+import type { CostTableResponse, Scope, WeekID } from './types';
 import type {
   AllocateMode,
   BreakdownResponse,
@@ -77,6 +77,19 @@ export function getCostByProduct(params: BreakdownParams & { env?: string } = {}
 /** `product` filters to one product; `(shared)` and `(unattributed)` are allowed. */
 export function getCostByEnvironment(params: BreakdownParams & { product?: string } = {}): Promise<BreakdownResponse> {
   return request<BreakdownResponse>(`/cost/by-environment${qs(params)}`);
+}
+
+export interface WeeklyBreakdownResponse extends CostTableResponse {
+  dimension: 'product' | 'environment';
+  allocate: AllocateMode;
+}
+
+/** Weeks × products (or environments): the Cost table's shape with product columns. */
+export function getWeeklyByDimension(
+  dimension: 'product' | 'environment',
+  params: { scope?: Scope; from?: WeekID; to?: WeekID; allocate?: AllocateMode } = {},
+): Promise<WeeklyBreakdownResponse> {
+  return request<WeeklyBreakdownResponse>(`/cost/by-${dimension}/weeks${qs(params)}`);
 }
 
 export function getLabelSuggestions(params: { week?: WeekID; scope?: Scope; limit?: number } = {}): Promise<LabelSuggestionsResponse> {

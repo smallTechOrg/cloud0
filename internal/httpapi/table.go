@@ -58,32 +58,13 @@ func (d Deps) handleCostTable(w http.ResponseWriter, r *http.Request) *APIError 
 	ctx := r.Context()
 	q := r.URL.Query()
 	now := d.now()
-	current := isoweek.Current(now)
-	first := d.Config.FirstWeek
-
 	scope, aerr := d.scopeParam(q.Get("scope"))
 	if aerr != nil {
 		return aerr
 	}
-	from, to := first, current
-	if v := q.Get("from"); v != "" {
-		if from, aerr = parseWeek(v); aerr != nil {
-			return aerr
-		}
-	}
-	if v := q.Get("to"); v != "" {
-		if to, aerr = parseWeek(v); aerr != nil {
-			return aerr
-		}
-	}
-	if isoweek.Compare(from, first) < 0 {
-		return errWeekOutOfRange("The from week " + from.String() + " is before the first week " + first.String() + ".")
-	}
-	if isoweek.Compare(to, current) > 0 {
-		return errWeekOutOfRange("The to week " + to.String() + " is after the current week " + current.String() + ".")
-	}
-	if isoweek.Compare(from, to) > 0 {
-		return errWeekOutOfRange("The from week " + from.String() + " is after the to week " + to.String() + ".")
+	from, to, aerr := d.weekRangeParams(q.Get("from"), q.Get("to"), now)
+	if aerr != nil {
+		return aerr
 	}
 
 	latest, err := store.LatestPerWeek(ctx, d.Store.DB, from.Prev(), to)
@@ -116,6 +97,35 @@ func (d Deps) handleCostTable(w http.ResponseWriter, r *http.Request) *APIError 
 	}
 	writeJSON(w, http.StatusOK, table)
 	return nil
+}
+
+// weekRangeParams validates the optional from/to week query parameters
+// against CLOUD0_FIRST_WEEK and the current week (defaults: both ends).
+func (d Deps) weekRangeParams(fromV, toV string, now time.Time) (isoweek.Week, isoweek.Week, *APIError) {
+	current := isoweek.Current(now)
+	first := d.Config.FirstWeek
+	from, to := first, current
+	var aerr *APIError
+	if fromV != "" {
+		if from, aerr = parseWeek(fromV); aerr != nil {
+			return from, to, aerr
+		}
+	}
+	if toV != "" {
+		if to, aerr = parseWeek(toV); aerr != nil {
+			return from, to, aerr
+		}
+	}
+	if isoweek.Compare(from, first) < 0 {
+		return from, to, errWeekOutOfRange("The from week " + from.String() + " is before the first week " + first.String() + ".")
+	}
+	if isoweek.Compare(to, current) > 0 {
+		return from, to, errWeekOutOfRange("The to week " + to.String() + " is after the current week " + current.String() + ".")
+	}
+	if isoweek.Compare(from, to) > 0 {
+		return from, to, errWeekOutOfRange("The from week " + from.String() + " is after the to week " + to.String() + ".")
+	}
+	return from, to, nil
 }
 
 // storeErr maps a store.ErrNotFound to 404 and everything else to 500.

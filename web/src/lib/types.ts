@@ -68,6 +68,8 @@ export interface Column {
   extra?: boolean;
   /** For `stub` columns: the phase in which the column becomes real. */
   phase?: number;
+  /** Product / environment tables: which bucket the column is. */
+  group?: 'product' | 'environment' | 'shared' | 'unattributed';
 }
 
 export interface Thresholds {

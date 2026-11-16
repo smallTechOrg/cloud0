@@ -19,6 +19,8 @@ interface Props {
   refreshDisabled: boolean;
   onCellClick: (row: CostRow, column: Column) => void;
   onRefreshWeek: (week: WeekID) => void;
+  /** Overrides the default "Cost by service" caption. */
+  caption?: string;
 }
 
 const SKELETON_ROWS = 6;
@@ -44,7 +46,7 @@ export function CostTable(p: Props) {
         <caption className={styles.caption}>
           {p.fallback
             ? 'Cost table unavailable from the API — showing every week as not fetched (see the banner above).'
-            : `Cost by service per ISO week · ${currency}, net of credits · click a number for provenance and drill-down.`}
+            : (p.caption ?? `Cost by service per ISO week · ${currency}, net of credits · click a number for provenance and drill-down.`)}
         </caption>
         <thead>
           <tr>
@@ -109,7 +111,7 @@ function HeaderCell({ column }: { column: Column }) {
   const isStub = column.kind === 'stub';
   let title: string | undefined;
   if (column.kind === 'service' && column.services) title = `aggregates: ${column.services.join(', ')}`;
-  if (column.extra) title = `${title ?? ''}${title ? ' · ' : ''}service not in the reference sheet; appended automatically`;
+  if (column.extra) title = `${title ?? ''}${title ? ' · ' : ''}service not pinned by CLOUD0_COST_COLUMNS; appended automatically`;
   if (isStub) title = `Arrives in Phase ${column.phase ?? '?'}`;
   return (
     <th

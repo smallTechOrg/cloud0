@@ -135,6 +135,60 @@ func Assemble(in Input) (Table, error) {
 		}
 	}
 	columns := ColumnsFor(extras)
+	return buildTable(in, weeks, sums, columns), nil
+}
+
+// Sum is one value cell before deltas: what a grouped table aggregates.
+type Sum struct{ Net, Gross, Credits float64 }
+
+// GroupedInput is Input for a table whose value columns are not services
+// (products, environments): the caller has already summed each week.
+type GroupedInput struct {
+	Input
+	// Sums holds, per week with a snapshot (include From.Prev() for the first
+	// row's deltas), the value of every group key.
+	Sums map[isoweek.Week]map[string]Sum
+	// Groups are the value columns in display order; week, total and
+	// % change are added around them. Kind defaults to KindService.
+	Groups []Column
+}
+
+// AssembleGrouped builds a Cost-table-shaped response (same rows, statuses,
+// deltas, anomaly flags and annotations) over caller-defined value columns.
+// Rows/Scope of the embedded Input are ignored: Sums is already scoped.
+func AssembleGrouped(in GroupedInput) (Table, error) {
+	if in.Now.IsZero() {
+		return Table{}, fmt.Errorf("costtable: now is required")
+	}
+	weeks, err := isoweek.Range(in.From, in.To)
+	if err != nil {
+		return Table{}, fmt.Errorf("costtable: %w", err)
+	}
+	sums := make(map[isoweek.Week]map[string]agg, len(in.Sums))
+	for w, byKey := range in.Sums {
+		if _, ok := in.Latest[w]; !ok {
+			continue
+		}
+		m := make(map[string]agg, len(byKey))
+		for k, v := range byKey {
+			m[k] = agg{gross: v.Gross, credits: v.Credits, net: v.Net}
+		}
+		sums[w] = m
+	}
+	columns := make([]Column, 0, len(in.Groups)+3)
+	columns = append(columns, weekColumn)
+	for _, c := range in.Groups {
+		if c.Kind == "" {
+			c.Kind = KindService
+		}
+		columns = append(columns, c)
+	}
+	columns = append(columns, totalColumns...)
+	return buildTable(in.Input, weeks, sums, columns), nil
+}
+
+// buildTable turns per-week sums into rows with deltas and flags.
+func buildTable(in Input, weeks []isoweek.Week, sums map[isoweek.Week]map[string]agg, columns []Column) Table {
 	valueKeys := make([]string, 0, len(columns))
 	for _, c := range columns {
 		if c.Kind == KindService {
@@ -186,7 +240,7 @@ func Assemble(in Input) (Table, error) {
 		row.PctChange, row.Flagged = total.DeltaPct, total.Flagged
 		tbl.Rows = append(tbl.Rows, row)
 	}
-	return tbl, nil
+	return tbl
 }
 
 // cellsFor fills every service column (zero when absent) and the total, which
