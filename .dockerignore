@@ -1,0 +1,19 @@
+# Keep secrets, local state and build output out of the image build context.
+.git
+.github
+.env
+.env.*
+sa-key*.json
+*.json.key
+bin
+data
+*.log
+*.err
+web/node_modules
+web/.next
+web/out
+web/test-results
+web/playwright-report
+web/blob-report
+internal/webui/dist/*
+!internal/webui/dist/.gitkeep

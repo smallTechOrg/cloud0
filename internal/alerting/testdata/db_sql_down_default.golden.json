@@ -1,0 +1,42 @@
+{
+  "combiner": "OR",
+  "conditions": [
+    {
+      "conditionThreshold": {
+        "aggregations": [
+          {
+            "alignmentPeriod": "60s",
+            "crossSeriesReducer": "REDUCE_MIN",
+            "groupByFields": [
+              "resource.label.database_id"
+            ],
+            "perSeriesAligner": "ALIGN_MIN"
+          }
+        ],
+        "comparison": "COMPARISON_LT",
+        "duration": "180s",
+        "evaluationMissingData": "EVALUATION_MISSING_DATA_ACTIVE",
+        "filter": "resource.type = \"cloudsql_database\" AND metric.type = \"cloudsql.googleapis.com/database/up\"",
+        "thresholdValue": 1,
+        "trigger": {
+          "count": 1
+        }
+      },
+      "displayName": "Cloud SQL database up \u003c 1 for 3 min"
+    }
+  ],
+  "displayName": "cloud0: Cloud SQL down",
+  "documentation": {
+    "content": "**Cloud SQL database is down.**\n\n`cloudsql.googleapis.com/database/up` has been below 1 (or has stopped reporting, which is treated as a breach) for 3 min on a database in this project.\n\nWhat to check:\n- Cloud SQL instance state and recent operations in the console (restart, maintenance, failover).\n- Instance logs for crashes or out-of-memory kills.\n- Disk full or memory exhaustion (see the Cloud SQL disk/memory alerts).\n\nManaged by cloud0 (template `sql_down`); edit it from the Alerts tab, not in the console.",
+    "mimeType": "text/markdown"
+  },
+  "enabled": true,
+  "notificationChannels": [
+    "projects/proj-a/notificationChannels/111"
+  ],
+  "severity": "CRITICAL",
+  "userLabels": {
+    "cloud0-template": "sql_down",
+    "managed-by": "cloud0"
+  }
+}

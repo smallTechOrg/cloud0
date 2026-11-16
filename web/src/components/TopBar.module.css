@@ -1,0 +1,98 @@
+.topbar {
+  position: relative;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  padding: 0.6rem 1.25rem;
+}
+
+.brand {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.status {
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+  font-size: 0.9rem;
+  text-align: right;
+}
+
+.runStatus {
+  color: var(--text);
+}
+
+.conn {
+  font-size: 0.8rem;
+}
+
+.connConnecting {
+  color: var(--muted);
+}
+
+.connOk {
+  color: var(--ok);
+}
+
+.connWarn {
+  color: var(--warn);
+}
+
+.connError {
+  color: var(--err);
+}
+
+.dot {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: currentColor;
+  margin-right: 0.3rem;
+  vertical-align: middle;
+}
+
+.progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 3px;
+  overflow: hidden;
+  background: #dbe4ff;
+}
+
+.progressBar {
+  width: 30%;
+  height: 100%;
+  background: var(--accent);
+  animation: slide 1.2s ease-in-out infinite;
+}
+
+@keyframes slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progressBar {
+    animation: none;
+    width: 100%;
+    opacity: 0.6;
+  }
+}

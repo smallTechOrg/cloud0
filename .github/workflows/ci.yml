@@ -1,0 +1,104 @@
+name: CI
+
+# Runs on every PR, and as the first stage of deploy-cloud-run (workflow_call) on pushes.
+# No secrets and no GCP access: tests that need real BigQuery skip here; they run in the local gate (`make gate`).
+#   test  -> web typecheck + Vitest + static export embedded into the binary (as `make web-build`), go vet, Go tests
+#            on SQLite (local use) and again on Postgres 17 (Cloud Run uses Cloud SQL Postgres 17)
+#   image -> builds the deployable image and smoke-tests it against Postgres: migrate up, sign-in, data kept
+#            (skipped when deploy-cloud-run calls this: the deploy job smoke-tests the very image it pushes)
+
+on:
+  pull_request:
+  workflow_call:
+    inputs:
+      image:
+        description: Build and smoke-test the image
+        type: boolean
+        default: true
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions: { contents: read }
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      GO111MODULE: "on"
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0  # same pin as the Dockerfile
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Web typecheck, unit tests and static export
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm typecheck
+          pnpm test
+          pnpm build
+      - name: Embed the UI
+        run: |
+          find internal/webui/dist -mindepth 1 -not -name .gitkeep -delete
+          cp -R web/out/. internal/webui/dist/
+          test -f internal/webui/dist/index.html
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"  # matches the Dockerfile's golang:1.23 (GOTOOLCHAIN=local)
+          cache-dependency-path: go.sum
+      - run: go vet ./...
+      - name: Go tests (SQLite)
+        run: |
+          go test ./internal/... -count=1 -timeout 15m
+          go test ./tests/... -count=1 -p 1 -timeout 15m
+      - name: Go tests (Postgres; each test gets its own schema)
+        env:
+          CLOUD0_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable
+        run: go test ./internal/... -count=1 -timeout 15m
+
+  image:
+    name: Cloud Run image
+    # Always on PRs (no inputs there; null == false in expressions), else as the caller asks.
+    if: ${{ github.event_name == 'pull_request' || inputs.image }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: cloud0
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: cloud0:ci
+          cache-from: type=gha,scope=cloud0
+          cache-to: type=gha,scope=cloud0,mode=max
+      - name: Smoke test against Postgres
+        run: bash deploy/smoke-image.sh cloud0:ci 'postgres://postgres:postgres@127.0.0.1:5432/cloud0?sslmode=disable'

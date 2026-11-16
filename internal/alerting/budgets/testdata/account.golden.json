@@ -1,0 +1,42 @@
+{
+  "displayName": "cloud0-account-monthly",
+  "amount": {
+    "specifiedAmount": {
+      "currencyCode": "INR",
+      "units": "6500"
+    }
+  },
+  "budgetFilter": {
+    "projects": [
+      "projects/proj-a",
+      "projects/123456"
+    ],
+    "calendarPeriod": "MONTH",
+    "creditTypesTreatment": "INCLUDE_ALL_CREDITS"
+  },
+  "thresholdRules": [
+    {
+      "thresholdPercent": 0.5,
+      "spendBasis": "CURRENT_SPEND"
+    },
+    {
+      "thresholdPercent": 0.8,
+      "spendBasis": "CURRENT_SPEND"
+    },
+    {
+      "thresholdPercent": 1,
+      "spendBasis": "CURRENT_SPEND"
+    },
+    {
+      "thresholdPercent": 1,
+      "spendBasis": "FORECASTED_SPEND"
+    }
+  ],
+  "notificationsRule": {
+    "monitoringNotificationChannels": [
+      "projects/proj-a/notificationChannels/111"
+    ],
+    "disableDefaultIamRecipients": false,
+    "schemaVersion": "1.0"
+  }
+}

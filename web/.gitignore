@@ -1,0 +1,16 @@
+# dependencies
+node_modules/
+# next.js
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+# test artefacts
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+# misc
+.DS_Store
+npm-debug.log*
+pnpm-debug.log*

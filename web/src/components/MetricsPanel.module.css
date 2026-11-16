@@ -1,0 +1,225 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.title {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.export {
+  font: inherit;
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.export:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.group {
+  margin-bottom: 1rem;
+}
+
+.groupHeading {
+  margin: 0 0 0.3rem;
+  font-size: 1rem;
+}
+
+.scroller {
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: max-content;
+  min-width: 100%;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.table th,
+.table td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.35rem 0.6rem;
+  vertical-align: top;
+}
+
+.table thead th {
+  background: #eef1f5;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.resHead,
+.resCell {
+  position: sticky;
+  left: 0;
+  text-align: left;
+  min-width: 11rem;
+  border-right: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.table thead .resHead {
+  background: #eef1f5;
+}
+
+.resCell {
+  font-weight: 600;
+}
+
+.totalRes {
+  font-style: italic;
+  font-weight: 500;
+}
+
+.project {
+  display: block;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.numHead {
+  text-align: right;
+}
+
+.unit {
+  display: block;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.cellButton {
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  background: none;
+  border: none;
+  padding: 0.1rem 0.25rem;
+  margin: -0.1rem -0.25rem;
+  color: var(--text);
+  cursor: pointer;
+  text-align: right;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  border-radius: 4px;
+}
+
+.cellButton:hover {
+  background: #dbe4ff;
+}
+
+.cellButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.cellButton:disabled {
+  cursor: default;
+}
+
+.gapText {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.limitNear {
+  background: #fff4d6;
+  box-shadow: inset 3px 0 0 var(--warn);
+}
+
+.limitOver {
+  background: #fde8e6;
+  box-shadow: inset 3px 0 0 var(--err);
+}
+
+.limitTag {
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.limitNear .limitTag {
+  color: var(--warn);
+}
+
+.limitOver .limitTag {
+  color: var(--err);
+}
+
+.selectedCell {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.inlineHint {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+  font-style: normal;
+  font-weight: 600;
+  white-space: normal;
+  max-width: 18rem;
+  margin-left: auto;
+}
+
+.emptyRow {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.loading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.skeleton {
+  display: block;
+  height: 2rem;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s linear infinite;
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.totalRow td,
+.totalRow th {
+  font-weight: 700;
+  background: #f3f5f9;
+  border-top: 2px solid var(--border);
+}
+
+.totalLabel {
+  font-weight: 700;
+}

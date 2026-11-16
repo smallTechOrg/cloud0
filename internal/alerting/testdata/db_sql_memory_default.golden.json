@@ -1,0 +1,52 @@
+{
+  "combiner": "OR",
+  "conditions": [
+    {
+      "conditionThreshold": {
+        "aggregations": [
+          {
+            "alignmentPeriod": "60s",
+            "crossSeriesReducer": "REDUCE_SUM",
+            "groupByFields": [
+              "resource.label.database_id"
+            ],
+            "perSeriesAligner": "ALIGN_MEAN"
+          }
+        ],
+        "comparison": "COMPARISON_GT",
+        "denominatorAggregations": [
+          {
+            "alignmentPeriod": "60s",
+            "crossSeriesReducer": "REDUCE_SUM",
+            "groupByFields": [
+              "resource.label.database_id"
+            ],
+            "perSeriesAligner": "ALIGN_MEAN"
+          }
+        ],
+        "denominatorFilter": "resource.type = \"cloudsql_database\" AND metric.type = \"cloudsql.googleapis.com/database/memory/quota\"",
+        "duration": "300s",
+        "filter": "resource.type = \"cloudsql_database\" AND metric.type = \"cloudsql.googleapis.com/database/memory/total_usage\"",
+        "thresholdValue": 0.85,
+        "trigger": {
+          "count": 1
+        }
+      },
+      "displayName": "Cloud SQL memory usage / quota \u003e 85 % for 5 min"
+    }
+  ],
+  "displayName": "cloud0: Cloud SQL memory high",
+  "documentation": {
+    "content": "**Cloud SQL memory usage is above 85 % of the instance memory** for 5 min.\n\nThe condition is `database/memory/total_usage` divided by `database/memory/quota`. It deliberately does not use `database/memory/utilization`, which reads 100 % permanently on shared-core tiers (db-f1-micro, db-g1-small) and would alert forever.\n\n`total_usage` includes the buffer/cache, so a high value can be normal for a busy database; check swap/OOM events and query latency before resizing.\n\nManaged by cloud0 (template `sql_memory_high`); edit it from the Alerts tab, not in the console.",
+    "mimeType": "text/markdown"
+  },
+  "enabled": true,
+  "notificationChannels": [
+    "projects/proj-a/notificationChannels/111"
+  ],
+  "severity": "ERROR",
+  "userLabels": {
+    "cloud0-template": "sql_memory_high",
+    "managed-by": "cloud0"
+  }
+}

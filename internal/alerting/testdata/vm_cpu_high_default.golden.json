@@ -1,0 +1,42 @@
+{
+  "combiner": "OR",
+  "conditions": [
+    {
+      "conditionThreshold": {
+        "aggregations": [
+          {
+            "alignmentPeriod": "60s",
+            "crossSeriesReducer": "REDUCE_NONE",
+            "groupByFields": [
+              "resource.label.instance_id"
+            ],
+            "perSeriesAligner": "ALIGN_MEAN"
+          }
+        ],
+        "comparison": "COMPARISON_GT",
+        "duration": "300s",
+        "filter": "metric.type=\"compute.googleapis.com/instance/cpu/utilization\" AND resource.type=\"gce_instance\"",
+        "thresholdValue": 0.8,
+        "trigger": {
+          "count": 1
+        }
+      },
+      "displayName": "VM CPU high above 80%"
+    }
+  ],
+  "displayName": "cloud0: VM CPU high",
+  "documentation": {
+    "content": "**VM CPU high** on VM `${resource.label.instance_id}` (project `${project}`): CPU above 80% for 300 s.\n\nWhat to check first:\n\n1. Open the VM in Compute Engine \u003e Observability and look at the CPU graph.\n2. SSH in and run `top` / `htop` to find the busy process.\n3. Check for a recent deploy, runaway job or traffic spike; resize the VM if the load is legitimate.\n",
+    "mimeType": "text/markdown",
+    "subject": "VM CPU high: ${resource.label.instance_id}"
+  },
+  "enabled": true,
+  "notificationChannels": [
+    "projects/proj-a/notificationChannels/1"
+  ],
+  "severity": "WARNING",
+  "userLabels": {
+    "cloud0-template": "vm_cpu_high",
+    "managed-by": "cloud0"
+  }
+}

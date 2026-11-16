@@ -1,0 +1,45 @@
+.badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.badge + .badge {
+  margin-left: 0.3rem;
+}
+
+.final {
+  background: #dcfce7;
+  color: #14532d;
+  border-color: #86efac;
+}
+
+.settling {
+  background: #fef3c7;
+  color: #78350f;
+  border-color: #fcd34d;
+}
+
+.partial {
+  background: #e5e7eb;
+  color: #374151;
+  border-color: #d1d5db;
+}
+
+.stale {
+  background: transparent;
+  color: #92400e;
+  border-color: #f59e0b;
+}
+
+.notFetched {
+  background: transparent;
+  color: var(--muted);
+  border: 1px dashed #9ca3af;
+}

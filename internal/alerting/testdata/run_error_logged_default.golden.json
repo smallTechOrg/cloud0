@@ -1,0 +1,31 @@
+{
+  "alertStrategy": {
+    "autoClose": "604800s",
+    "notificationRateLimit": {
+      "period": "3600s"
+    }
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "conditionMatchedLog": {
+        "filter": "resource.type=\"cloud_run_revision\" AND severity\u003e=ERROR"
+      },
+      "displayName": "Cloud Run log entry with severity ERROR or higher"
+    }
+  ],
+  "displayName": "cloud0: Application error logged (Cloud Run)",
+  "documentation": {
+    "content": "A Cloud Run service wrote a log entry with severity ERROR or higher.\n\nThis is a log-match alert, not an Error Reporting \"new error group\" alert: the Monitoring API offers no condition for new Error Reporting groups, so every error log is matched, limited to one notification per 60 minutes.\n\n**First look:** open the cloud0 **Errors** tab and use the triage view to see which service, status code and message dominate, then open the sample in **Logs Explorer** (resource type `Cloud Run Revision`, filter on the service named in the incident).",
+    "mimeType": "text/markdown"
+  },
+  "enabled": true,
+  "notificationChannels": [
+    "projects/proj-a/notificationChannels/1"
+  ],
+  "severity": "WARNING",
+  "userLabels": {
+    "cloud0-template": "run_error_logged",
+    "managed-by": "cloud0"
+  }
+}
