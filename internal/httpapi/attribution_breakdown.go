@@ -217,12 +217,15 @@ func (d Deps) handleBreakdownBy(dim string) Handler {
 		out.Groups, out.Notes = groups, notes
 
 		// Columns: the Cost table's service columns + total, minus week/%change/stubs.
-		extraSet := map[string]float64{}
+		extras := map[string]costtable.ServiceTotal{}
 		totals := map[string]attribution.BreakdownCell{}
 		for _, row := range rows {
 			key := costtable.ColumnKeyFor(row.Service)
 			if costtable.IsExtraKey(key) {
-				extraSet[key[len(costtable.ExtraKeyPrefix):]] += row.Net
+				t := extras[key[len(costtable.ExtraKeyPrefix):]]
+				t.Net += row.Net
+				t.Gross += row.Gross
+				extras[key[len(costtable.ExtraKeyPrefix):]] = t
 			}
 			for _, k := range []string{key, attribution.ColumnTotal} {
 				c := totals[k]
@@ -232,13 +235,7 @@ func (d Deps) handleBreakdownBy(dim string) Handler {
 				totals[k] = c
 			}
 		}
-		extras := make([]string, 0, len(extraSet))
-		for s, n := range extraSet {
-			if n != 0 {
-				extras = append(extras, s)
-			}
-		}
-		for _, c := range costtable.Columns(extras) {
+		for _, c := range costtable.ColumnsFor(extras) {
 			if c.Kind == costtable.KindService || c.Kind == costtable.KindTotal {
 				out.Columns = append(out.Columns, attribution.Column{Key: c.Key, Label: c.Label, Kind: string(c.Kind), Services: c.Services, Extra: c.Extra})
 			}

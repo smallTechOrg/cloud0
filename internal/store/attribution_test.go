@@ -76,7 +76,7 @@ VALUES (2026, 43, '2026-10-19', '2026-10-25', ?, 'final', ?, ?, 1, 1, 0, 1, ?)`,
 		t.Fatalf("0004-shaped insert: %v", err)
 	}
 	applied, err := s.Migrate(ctx)
-	if err != nil || len(applied) != 1 || applied[0].Source != "0005_attribution.sql" {
+	if err != nil || len(applied) != 2 || applied[0].Source != "0005_attribution.sql" || applied[1].Source != "0006_daily.sql" {
 		t.Fatalf("Migrate: %+v %v", applied, err)
 	}
 	rows, err := SnapshotRows(ctx, s.DB, sid, ScopeAll)

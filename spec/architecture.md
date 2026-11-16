@@ -63,12 +63,13 @@ SELECT
   TO_JSON_STRING(system_labels) AS system_labels_json,
   SUM(cost)             AS gross,
   SUM((SELECT IFNULL(SUM(c.amount), 0) FROM UNNEST(credits) AS c)) AS credits,
-  COUNT(*)              AS line_items
+  COUNT(*)              AS line_items,
+  DATE(usage_start_time) AS usage_date
 FROM `<CLOUD0_BILLING_EXPORT_TABLE>`
 WHERE DATE(_PARTITIONTIME) BETWEEN @part_start AND @part_end
   AND usage_start_time >= @usage_start
   AND usage_start_time <  @usage_end
-GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11
+GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, usage_date
 ```
 
 - Phase 3 adds `labels_json` / `system_labels_json` (`TO_JSON_STRING` of the export's repeated `labels` / `system_labels`, e.g. `[{"key":"env","value":"prod"}]`; `[]` when none) so attribution rules can match GCP labels; they are grouped on, so a resource whose label set changes mid-week yields two rows (sums unchanged). Snapshots fetched before migration 0005 have NULL label columns.
@@ -232,6 +233,8 @@ All variables are read by `internal/config`. `.env.example` lists exactly this t
 | `CLOUD0_PARTITION_MARGIN_DAYS` | no | `1` | Days added on each side of the usage window for the `_PARTITIONTIME` filter. |
 | `CLOUD0_LOG_LEVEL` | no | `info` | `debug` / `info` / `warn` / `error`. |
 | `CLOUD0_CURRENCY` | no | `INR` | 3-letter ISO 4217 code (validated `^[A-Z]{3}$`, upper-cased) of the billing export's `currency` column. Display only: labels every money value in the UI/CSV; no conversion. |
+| `CLOUD0_COST_COLUMNS` | no | unset → dynamic | Cost-table service columns (`costtable.ParseLayout`). Unset: one column per `service.description` with non-zero net or gross in the range, ordered by range net desc. Set: `;`-separated `[key:]Label[=Service|Service…]`, pinned in order; unlisted services with non-zero net become extra columns sorted by label. |
+| `CLOUD0_VENDOR_COLUMNS` | no | unset | Vendor stub columns after `% change`: `;`-separated `id:Label`, keys `stub:<id>`. `groq` also enables the Groq rows of the Limits tab. |
 | `CLOUD0_SMOKE_WEEK` | no (tests only) | `2026-W42` | A known complete, non-empty week used by the smoke and e2e tests. |
 | `CLOUD0_E2E_PORT` | no (tests only) | `8097` | Port Playwright starts the binary on (so e2e never collides with a running dev server on `CLOUD0_PORT`). The Go live tests use an OS-assigned free port instead. |
 

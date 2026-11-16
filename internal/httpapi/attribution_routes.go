@@ -10,6 +10,7 @@ package httpapi
 func (d Deps) registerAttributionRoutes(r *router) {
 	d.registerAttributionRules(r)
 	d.registerAttributionBreakdown(r)
+	d.registerAttributionWeekly(r)
 	d.registerAttributionTargets(r)
 	d.registerAttributionRightsizing(r)
 }

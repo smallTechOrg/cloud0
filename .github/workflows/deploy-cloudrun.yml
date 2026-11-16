@@ -9,6 +9,8 @@
 # The repo is public, so every identifier comes from repository secrets: GCP_PROJECT_ID, GCP_PROJECT_NUMBER,
 # CLOUD0_GCP_PROJECTS, CLOUD0_BIGQUERY_PROJECT, CLOUD0_BILLING_EXPORT_TABLE, CLOUD0_PASSWORD, CLOUD0_DATABASE_URL,
 # and optionally CLOUD0_BILLING_ACCOUNT_ID, CLOUD0_OPENROUTER_API_KEY.
+# The Cost table layout is not secret and comes from optional repository *variables* CLOUD0_COST_COLUMNS and
+# CLOUD0_VENDOR_COLUMNS (unset = columns follow the billing data; see .env.example for the syntax).
 #
 # Data lives in Cloud SQL (database cloud0 on the shared ai-agent-db Postgres instance, private IP, reached through
 # Direct VPC egress), so any number of instances share it and nothing is lost between them. Migrations run as the
@@ -120,6 +122,8 @@ jobs:
           CLOUD0_OPENROUTER_API_KEY: ${{ secrets.CLOUD0_OPENROUTER_API_KEY }}
           CLOUD0_PASSWORD: ${{ secrets.CLOUD0_PASSWORD }}
           CLOUD0_DATABASE_URL: ${{ secrets.CLOUD0_DATABASE_URL }}
+          CLOUD0_COST_COLUMNS: ${{ vars.CLOUD0_COST_COLUMNS }}
+          CLOUD0_VENDOR_COLUMNS: ${{ vars.CLOUD0_VENDOR_COLUMNS }}
         run: |
           set -euo pipefail
           # Apply (alert policies, budgets) needs the alerts-writer key; it is mounted only when provision.sh stored it.
@@ -138,7 +142,7 @@ jobs:
           python3 - "$ENV_FILE" <<'PY'
           import json, os, sys
           env = {k: os.environ[k] for k in ["CLOUD0_GCP_PROJECTS", "CLOUD0_BIGQUERY_PROJECT", "CLOUD0_BILLING_EXPORT_TABLE", "CLOUD0_PASSWORD", "CLOUD0_DATABASE_URL"]}
-          env.update({k: os.environ[k] for k in ["CLOUD0_BILLING_ACCOUNT_ID", "CLOUD0_OPENROUTER_API_KEY", "CLOUD0_ALERTS_CREDENTIALS"] if os.environ.get(k)})
+          env.update({k: os.environ[k] for k in ["CLOUD0_BILLING_ACCOUNT_ID", "CLOUD0_OPENROUTER_API_KEY", "CLOUD0_ALERTS_CREDENTIALS", "CLOUD0_COST_COLUMNS", "CLOUD0_VENDOR_COLUMNS"] if os.environ.get(k)})
           env.update(CLOUD0_LOG_LEVEL="info")
           open(sys.argv[1], "w").write("".join(f"{k}: {json.dumps(v)}\n" for k, v in env.items()))
           PY

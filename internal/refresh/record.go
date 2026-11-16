@@ -364,11 +364,11 @@ func (r *Runner) record(ctx context.Context, run store.Run, pl plan, out outcome
 				if err != nil {
 					return err
 				}
-				byWeek := r.groupRows(*pl.billing, out.bres.Rows)
+				byWeek, dailyByWeek := r.groupRows(*pl.billing, out.bres.Rows)
 				for _, w := range weeks {
 					snap, err := store.InsertSnapshot(ctx, tx, store.NewSnapshot{
 						Week: w, FetchedAt: startedAt, StatusAtFetch: isoweek.StatusAt(w, startedAt, r.Settle),
-						RunID: run.ID, RunSourceID: src.ID, Rows: byWeek[w],
+						RunID: run.ID, RunSourceID: src.ID, Rows: byWeek[w], Daily: dailyByWeek[w],
 					})
 					if err != nil {
 						return err

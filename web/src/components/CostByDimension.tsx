@@ -257,11 +257,16 @@ interface Props {
   dimension: 'product' | 'environment';
   /** Bumped by the parent after any refresh; re-fetches. */
   refreshToken: number;
+  /** Controlled allocation mode (shared with the weekly table); null = server default. */
+  allocate?: AllocateMode | null;
+  onAllocate?: (m: AllocateMode) => void;
 }
 
-export default function CostByDimension({ week, scope, dimension, refreshToken }: Props) {
+export default function CostByDimension({ week, scope, dimension, refreshToken, ...ctl }: Props) {
   const currency = useCurrency();
-  const [allocate, setAllocate] = useState<AllocateMode | null>(null);
+  const [ownAllocate, setOwnAllocate] = useState<AllocateMode | null>(null);
+  const allocate = ctl.allocate !== undefined ? ctl.allocate : ownAllocate;
+  const setAllocate = ctl.onAllocate ?? setOwnAllocate;
   const [data, setData] = useState<BreakdownResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [banner, setBanner] = useState<BannerData | null>(null);

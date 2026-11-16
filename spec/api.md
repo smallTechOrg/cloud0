@@ -330,6 +330,23 @@ Query: `week` (default `default_week`). 200:
 ### `PUT /api/v1/limits`
 Body (at least one key; both optional otherwise): `{"allowances": {"logging_gb": 75, "gcs_class_a_ops": 10000}, "warn_pct": 90}`. Each allowance is a finite JSON number ≥ 0 keyed by a known `limits.Allowance.ID`; `warn_pct` ∈ (0, 100]. The server builds settings `limit.<id>` / `limit.warn_pct`, validates the full merged set with `limits.ParseOverrides` (failure → `400 invalid_limit`, message names the key; nothing is saved), then `store.PutSettings`. Wrong JSON types / empty body → `400 invalid_request`. Stub allowances may be edited like any other. To reset an allowance, PUT its default. 200: the `GET /limits` body for `default_week` (optional query `week` honoured).
 
+### `GET /api/v1/cost/daily`
+
+Net cost per UTC day, stacked into series (SMA-29). Read-only, from the per-day rows (`snapshot_daily_rows`, migration 0006) stored with each week's **latest** snapshot; the billing query groups by `DATE(usage_start_time)` as well as the ISO week, so no extra BigQuery job runs and Σ days of a week = that week's snapshot net.
+
+Query: `from`, `to` (YYYY-MM-DD, UTC; `to` defaults to today, `from` to `to − days + 1` clipped to the first week's Monday), `days` (1–366, default 28; ignored when `from` is given), `scope`, `by` (`service` default · `project` · `product` · `environment`), `top` (1–20, default 8).
+
+```json
+{ "from": "2026-10-12", "to": "2026-10-18", "scope": "all", "by": "service", "top": 8,
+  "generated_at": "…", "total": 275.0, "notes": ["Not fetched yet: 2026-W43 — refresh those weeks to see their days."],
+  "days":   [{ "date": "2026-10-12", "week": "2026-W42", "week_status": "final", "snapshot_id": 7, "has_daily": true, "total": 100.0 }],
+  "series": [{ "key": "compute_engine", "label": "Compute Engine", "kind": "group", "total": 150.0, "values": [100.0, 50.0, 0.0, …] }] }
+```
+
+- `days[].total` and every `series[].values[i]` are `null` (never 0) when the day has no data: its week was never fetched (`snapshot_id: null`) or was fetched before daily rows were captured (`has_daily: false`); `notes` names those weeks.
+- Series keys: `service` → the Cost-table column key under the active layout (label = column label); `project` → project id; `product` / `environment` → the attribution engine's result per row, with `(shared)`, `(unattributed)` / `(no environment)` buckets (no allocation in the daily view). Named series sort by range total desc; beyond `top` they fold into `(other)` (`kind: "other"`), which sits before the residue buckets.
+- Errors: `400 invalid_date | date_out_of_range | invalid_days | invalid_dimension | invalid_top | invalid_scope`; `503 attribution_not_configured` for `by=product|environment` without the engine.
+
 ### `GET /api/v1/cost/month`
 Query: `from` (default month of `first_week`'s Monday), `to` (default current month), both `YYYY-MM`; `scope`. 200:
 ```json
@@ -710,6 +727,17 @@ Query: `week`, `scope`, `allocate` (`none|even|proportional`; default the persis
 - **Reconciliation.** `cost_table_total` = the `total` cell net of `/cost/table` for the same week+scope (with an `env`/`product` filter set it is the filtered net total and `notes` contains `"Filtered view"`); `breakdown_total` = Σ group `net`; `ok` = |diff| ≤ 0.005. Σ over groups of any column cell = the Cost table's cell for that column (unfiltered).
 - Errors: `400 invalid_allocate|invalid_dimension|invalid_week|week_out_of_range|invalid_scope`.
 - Drill-down: `GET /api/v1/snapshots/{id}/breakdown` additionally accepts `product` and `environment` (names, `(shared)`, `(unattributed)`, `(no environment)`); rows are first filtered through the engine; totals reconcile to the group cell. Invalid names → `400 invalid_dimension`.
+
+### `GET /api/v1/cost/by-product/weeks` · `GET /api/v1/cost/by-environment/weeks`
+
+Weekly product (or environment) table: exactly the `GET /cost/table` response shape (`scope`, `from`, `to`, `generated_at`, `thresholds`, `columns`, `rows` with `snapshot`, `cells`, `delta_abs`/`delta_pct`, `flagged`, `pct_change`, `annotation`), plus `dimension` and `allocate`.
+
+Query: `from`, `to` (WeekIDs, same defaults and `week_out_of_range` rules as `/cost/table`), `scope`, `allocate` (`none|even|proportional`; default the persisted `attribution.allocate`).
+
+- Value columns are the attribution groups seen in any snapshot of `from−1 … to`: products (or environments) ordered by the range's net desc, then `(shared)` (omitted when allocation empties it), then `(unattributed)` / `(no environment)`. Each column has `kind: "service"` (a value column; kept for renderer compatibility) and `group: product|environment|shared|unattributed`. `total` and `pct_change` follow; no vendor columns.
+- Each week's cells come from the same `BuildBreakdown` as `/cost/by-product?week=` for that week's latest snapshot, so `cells.total.net` equals the service table's total for the week (allocation moves money between columns, never in or out). `gross`/`credits` are the direct (pre-allocation) values.
+- Deltas and flags follow `anomaly-flags.md` per column against the previous week's latest snapshot.
+- Errors: `400 invalid_week | week_out_of_range | invalid_scope | invalid_allocate`; `503 attribution_not_configured`.
 
 ### `GET /api/v1/attribution/label-suggestions`
 Query: `week`, `scope`, `limit` (default 200, max 1000). 200:

@@ -113,6 +113,9 @@ type NewSnapshot struct {
 	RunSourceID   int64
 	CreatedAt     time.Time // zero → FetchedAt
 	Rows          []SnapshotRow
+	// Daily holds the same cost split by usage date (migration 0006); may be
+	// empty (sources that do not report dates). Its sum should equal Rows'.
+	Daily []DailyRow
 }
 
 func validStatus(s isoweek.Status) bool {
@@ -173,6 +176,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		if err := insertRowBatch(ctx, q, snap.ID, rows[start:end]); err != nil {
 			return Snapshot{}, fmt.Errorf("store: insert snapshot %d rows %d..%d: %w", snap.ID, start, end, err)
 		}
+	}
+	if err := insertDailyRows(ctx, q, snap.ID, ns.Daily); err != nil {
+		return Snapshot{}, err
 	}
 	return snap, nil
 }

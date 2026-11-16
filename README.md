@@ -59,6 +59,8 @@ cp .env.example .env
 | `CLOUD0_PARTITION_MARGIN_DAYS` | no | `1` | Days added on each side of the `_PARTITIONTIME` filter. |
 | `CLOUD0_LOG_LEVEL` | no | `info` | `debug` / `info` / `warn` / `error`. |
 | `CLOUD0_CURRENCY` | no | `INR` | 3-letter ISO 4217 code of the billing export's `currency` column. Display only: used to format every money value; no conversion is applied. |
+| `CLOUD0_COST_COLUMNS` | no | unset → dynamic | Cost-table service columns. Unset: one column per billing service with cost in the range, largest net first. Set: `;`-separated `[key:]Label[=Service\|Service…]` pinned in that order; unlisted services with cost are appended as extra columns. Example in `.env.example`. Invalid → exit 2. |
+| `CLOUD0_VENDOR_COLUMNS` | no | unset | Vendor stub columns after "% change", `;`-separated `id:Label` (e.g. `groq:AI Cost (Groq); claude:claude (usage)`). A `groq` entry also shows the Groq quota rows on the Limits tab. |
 | `CLOUD0_OPENROUTER_API_KEY` | no | unset | Enables the optional LLM rule proposer (`POST /api/v1/attribution/propose`). Unset = disabled (503, no outbound call). Proposals are never applied automatically; prompts carry resource names/labels only, no amounts. Secret: keep in `.env`. |
 | `CLOUD0_LLM_MODEL` | no | `anthropic/claude-sonnet-4-6` | OpenRouter model slug used by the rule proposer. |
 | `CLOUD0_ALERTS_CREDENTIALS` | no | unset | Absolute path to the **alerts-writer** service-account key (a second, separate account; see section 9). Unset = Alerts, Incidents and Budgets are read-only: previews work, Apply and budget reads answer `503 alerts_not_configured`. Secret: keep the key outside the repo. |

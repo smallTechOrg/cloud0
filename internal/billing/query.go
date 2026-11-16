@@ -1,7 +1,7 @@
 // Package billing is cloud0's BigQuery billing source: it builds the one
 // parameterised, partition-filtered query over the detailed billing export
 // (spec/architecture.md → "BigQuery query"), executes it, returns rows grouped
-// by (ISO week, project, service, SKU, resource) with job statistics, and
+// by (ISO week, project, service, SKU, resource, usage date) with job statistics, and
 // classifies provider errors into a code plus a fix hint
 // (spec/capabilities/run-log.md).
 //
@@ -42,12 +42,13 @@ const sqlTemplate = "SELECT\n" +
 	"  TO_JSON_STRING(system_labels) AS system_labels_json,\n" +
 	"  SUM(cost)             AS gross,\n" +
 	"  SUM((SELECT IFNULL(SUM(c.amount), 0) FROM UNNEST(credits) AS c)) AS credits,\n" +
-	"  COUNT(*)              AS line_items\n" +
+	"  COUNT(*)              AS line_items,\n" +
+	"  DATE(usage_start_time) AS usage_date\n" +
 	"FROM `" + tablePlaceholder + "`\n" +
 	"WHERE DATE(_PARTITIONTIME) BETWEEN @part_start AND @part_end\n" +
 	"  AND usage_start_time >= @usage_start\n" +
 	"  AND usage_start_time <  @usage_end\n" +
-	"GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11"
+	"GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, usage_date"
 
 // Parameter names as they appear in the SQL and in run_sources.params_json.
 const (

@@ -8,6 +8,9 @@ import AlertsPanel from '@/components/AlertsPanel';
 import AttributionPanel from '@/components/AttributionPanel';
 import BudgetsPanel from '@/components/BudgetsPanel';
 import CostByDimension from '@/components/CostByDimension';
+import WeeklyByDimension from '@/components/WeeklyByDimension';
+import DailyChart from '@/components/DailyChart';
+import type { AllocateMode } from '@/lib/attributionTypes';
 import { EmptyState } from '@/components/EmptyState';
 import IncidentsPanel from '@/components/IncidentsPanel';
 import RightsizingPanel from '@/components/RightsizingPanel';
@@ -98,6 +101,7 @@ export default function Page() {
   // ---- navigation ----------------------------------------------------------
   const [tab, setTab] = useState<TabId>('cost');
   const [dimension, setDimension] = useState<'service' | 'product' | 'environment'>('service');
+  const [dimAllocate, setDimAllocate] = useState<AllocateMode | null>(null);
   useEffect(() => {
     const apply = () => setTab(tabFromHash(window.location.hash));
     apply();
@@ -477,7 +481,7 @@ export default function Page() {
             <>
               <div className={styles.toolbar} data-testid="cost-toolbar">
                 <div className={styles.toolbarTitle}>
-                  Cost by service — {config?.currency ?? '…'}, net of credits
+                  Cost by {dimension} — {config?.currency ?? '…'}, net of credits
                   {config ? (
                     <span className={styles.toolbarMeta}>
                       {' '}
@@ -492,6 +496,7 @@ export default function Page() {
                     className={styles.exportButton}
                     data-testid="export-csv"
                     onClick={exportCsv}
+                    hidden={dimension !== 'service'}
                     disabled={!config || rows.length === 0}
                     title="Download the visible columns and rows as CSV"
                   >
@@ -499,6 +504,8 @@ export default function Page() {
                   </button>
                 </div>
               </div>
+
+              {config ? <DailyChart scope={scope} refreshToken={tableVersion} /> : null}
 
               <div role="group" aria-label="Cost view" data-testid="cost-dimension-toggle" className={styles.toolbarActions}>
                 {(['service', 'product', 'environment'] as const).map((d) => (
@@ -515,8 +522,28 @@ export default function Page() {
                 ))}
               </div>
 
+              {dimension !== 'service' ? (
+                <WeeklyByDimension
+                  dimension={dimension}
+                  scope={scope}
+                  selectedWeek={week}
+                  allocate={dimAllocate}
+                  refreshToken={tableVersion}
+                  refreshDisabled={running !== null}
+                  onSelectWeek={setWeek}
+                  onRefreshWeek={(w) => refreshWeek(w)}
+                />
+              ) : null}
+
               {dimension !== 'service' && week ? (
-                <CostByDimension week={week} scope={scope} dimension={dimension} refreshToken={tableVersion} />
+                <CostByDimension
+                  week={week}
+                  scope={scope}
+                  dimension={dimension}
+                  refreshToken={tableVersion}
+                  allocate={dimAllocate}
+                  onAllocate={setDimAllocate}
+                />
               ) : null}
 
               {dimension === 'service' && noSnapshots && config ? (
@@ -572,9 +599,11 @@ export default function Page() {
         highlightRunId={highlightRun}
       />
 
-      <footer className={styles.footer}>
-        The Vendors tab and the two vendor columns are labelled stubs until Phase 4 lands.
-      </footer>
+      {columns.some((c) => c.kind === 'stub') ? (
+        <footer className={styles.footer} data-testid="stub-footer">
+          The Vendors tab and the vendor columns are labelled stubs until Phase 4 lands.
+        </footer>
+      ) : null}
     </div>
     </CurrencyContext.Provider>
   );

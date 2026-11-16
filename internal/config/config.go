@@ -64,6 +64,13 @@ type Config struct {
 	// (CLOUD0_CURRENCY). Display-only: no conversion is ever applied.
 	Currency string
 
+	// CostColumns (CLOUD0_COST_COLUMNS) pins the Cost table's service columns
+	// and VendorColumns (CLOUD0_VENDOR_COLUMNS) adds vendor stub columns;
+	// both empty = dynamic columns from the billing data. The grammar lives in
+	// costtable.ParseLayout, which cmd/cloud0 validates at start-up.
+	CostColumns   string
+	VendorColumns string
+
 	// OpenRouterAPIKey (CLOUD0_OPENROUTER_API_KEY) enables the optional,
 	// off-by-default LLM rule proposer. A secret: never printed; Redacted()
 	// reports only set/unset. LLMModel (CLOUD0_LLM_MODEL) is its model slug.
@@ -191,6 +198,9 @@ func Load(getenv func(string) string) (Config, error) {
 		errs = append(errs, &ValidationError{"CLOUD0_CURRENCY", fmt.Sprintf("must be a 3-letter ISO 4217 code like INR or USD, got %q", get("CLOUD0_CURRENCY"))})
 	}
 
+	cfg.CostColumns = get("CLOUD0_COST_COLUMNS")
+	cfg.VendorColumns = get("CLOUD0_VENDOR_COLUMNS")
+
 	cfg.OpenRouterAPIKey = get("CLOUD0_OPENROUTER_API_KEY")
 	cfg.Password = get("CLOUD0_PASSWORD")
 	cfg.LLMModel = get("CLOUD0_LLM_MODEL")
@@ -253,7 +263,16 @@ func (c Config) Redacted() map[string]any {
 		"partition_margin_days": c.PartitionMarginDays,
 		"log_level":             c.LogLevel,
 		"currency":              c.Currency,
+		"cost_columns":          layoutMode(c.CostColumns),
+		"vendor_columns":        c.VendorColumns,
 	}
+}
+
+func layoutMode(columns string) string {
+	if strings.TrimSpace(columns) == "" {
+		return "dynamic"
+	}
+	return columns
 }
 
 // IsPostgresURL reports whether s is a Postgres connection URL (what

@@ -59,14 +59,14 @@ func TestMigrate_AppliesInitAndStatusReportsIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pending != 5 {
-		t.Fatalf("pending before migrate = %d, want 5", pending)
+	if pending != 6 {
+		t.Fatalf("pending before migrate = %d, want 6", pending)
 	}
 	before, err := s.MigrationStatus(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(before) != 5 || before[0].Applied || before[0].Source != "0001_init.sql" || before[1].Source != "0002_phase2.sql" || before[2].Source != "0003_error_codes.sql" || before[3].Source != "0004_alerts.sql" || before[4].Source != "0005_attribution.sql" {
+	if len(before) != 6 || before[5].Source != "0006_daily.sql" || before[0].Applied || before[0].Source != "0001_init.sql" || before[1].Source != "0002_phase2.sql" || before[2].Source != "0003_error_codes.sql" || before[3].Source != "0004_alerts.sql" || before[4].Source != "0005_attribution.sql" {
 		t.Fatalf("status before migrate: %+v", before)
 	}
 
@@ -74,7 +74,7 @@ func TestMigrate_AppliesInitAndStatusReportsIt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
-	if len(applied) != 5 || applied[0].Source != "0001_init.sql" || applied[1].Source != "0002_phase2.sql" || applied[2].Source != "0003_error_codes.sql" || applied[3].Source != "0004_alerts.sql" || applied[4].Source != "0005_attribution.sql" {
+	if len(applied) != 6 || applied[5].Source != "0006_daily.sql" || applied[0].Source != "0001_init.sql" || applied[1].Source != "0002_phase2.sql" || applied[2].Source != "0003_error_codes.sql" || applied[3].Source != "0004_alerts.sql" || applied[4].Source != "0005_attribution.sql" {
 		t.Fatalf("applied = %+v", applied)
 	}
 
@@ -82,7 +82,7 @@ func TestMigrate_AppliesInitAndStatusReportsIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(after) != 5 || !after[4].Applied || !after[3].Applied || !after[2].Applied || !after[1].Applied || after[0].AppliedAt.IsZero() || after[0].Version != 1 || after[1].Version != 2 {
+	if len(after) != 6 || !after[5].Applied || !after[4].Applied || !after[3].Applied || !after[2].Applied || !after[1].Applied || after[0].AppliedAt.IsZero() || after[0].Version != 1 || after[1].Version != 2 {
 		t.Fatalf("status after migrate: %+v", after)
 	}
 	if time.Since(after[0].AppliedAt) > time.Minute {

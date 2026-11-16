@@ -270,11 +270,28 @@ func (r *Runner) fetch(ctx context.Context, window billing.Window) (billing.Resu
 	return r.Source.Fetch(ctx, window)
 }
 
-// groupRows buckets the fetched rows by ISO week. Rows outside the window
-// cannot come back from the usage_start_time filter; if any do they are
-// dropped with a warning rather than attributed to the wrong snapshot.
-func (r *Runner) groupRows(window billing.Window, rows []billing.Row) map[isoweek.Week][]store.SnapshotRow {
+// groupRows buckets the fetched rows by ISO week. The billing query also
+// groups by usage date, so one weekly row (project, service, SKU, resource,
+// labels) can arrive once per day: those are summed into a single snapshot
+// row, and the per-day split is returned separately for snapshot_daily_rows.
+// Rows outside the window cannot come back from the usage_start_time filter;
+// if any do they are dropped with a warning rather than attributed to the
+// wrong snapshot.
+func (r *Runner) groupRows(window billing.Window, rows []billing.Row) (map[isoweek.Week][]store.SnapshotRow, map[isoweek.Week][]store.DailyRow) {
+	type rowKey struct {
+		project, serviceID, service, skuID, sku string
+		name, global, labels, sysLabels         string
+		hasName, hasGlobal, hasLabels, hasSys   bool
+	}
+	str := func(p *string) (string, bool) {
+		if p == nil {
+			return "", false
+		}
+		return *p, true
+	}
 	out := make(map[isoweek.Week][]store.SnapshotRow)
+	daily := make(map[isoweek.Week][]store.DailyRow)
+	index := make(map[isoweek.Week]map[rowKey]int)
 	dropped := 0
 	for _, b := range rows {
 		w := b.Week()
@@ -282,17 +299,41 @@ func (r *Runner) groupRows(window billing.Window, rows []billing.Row) map[isowee
 			dropped++
 			continue
 		}
-		out[w] = append(out[w], store.SnapshotRow{
-			ProjectID: b.ProjectID, ServiceID: b.ServiceID, Service: b.Service, SKUID: b.SKUID, SKU: b.SKU,
-			ResourceName: b.ResourceName, ResourceGlobalName: b.ResourceGlobalName,
-			LabelsJSON: b.LabelsJSON, SystemLabelsJSON: b.SystemLabelsJSON,
-			Gross: b.Gross, Credits: b.Credits, Net: b.Net, LineItems: b.LineItems,
-		})
+		k := rowKey{project: b.ProjectID, serviceID: b.ServiceID, service: b.Service, skuID: b.SKUID, sku: b.SKU}
+		k.name, k.hasName = str(b.ResourceName)
+		k.global, k.hasGlobal = str(b.ResourceGlobalName)
+		k.labels, k.hasLabels = str(b.LabelsJSON)
+		k.sysLabels, k.hasSys = str(b.SystemLabelsJSON)
+		if index[w] == nil {
+			index[w] = make(map[rowKey]int)
+		}
+		if i, ok := index[w][k]; ok {
+			sr := &out[w][i]
+			sr.Gross += b.Gross
+			sr.Credits += b.Credits
+			sr.Net += b.Net
+			sr.LineItems += b.LineItems
+		} else {
+			index[w][k] = len(out[w])
+			out[w] = append(out[w], store.SnapshotRow{
+				ProjectID: b.ProjectID, ServiceID: b.ServiceID, Service: b.Service, SKUID: b.SKUID, SKU: b.SKU,
+				ResourceName: b.ResourceName, ResourceGlobalName: b.ResourceGlobalName,
+				LabelsJSON: b.LabelsJSON, SystemLabelsJSON: b.SystemLabelsJSON,
+				Gross: b.Gross, Credits: b.Credits, Net: b.Net, LineItems: b.LineItems,
+			})
+		}
+		if b.UsageDate != "" {
+			daily[w] = append(daily[w], store.DailyRow{
+				UsageDate: b.UsageDate, ProjectID: b.ProjectID, Service: b.Service, SKU: b.SKU,
+				ResourceName: b.ResourceName, ResourceGlobalName: b.ResourceGlobalName, LabelsJSON: b.LabelsJSON,
+				Gross: b.Gross, Credits: b.Credits, Net: b.Net,
+			})
+		}
 	}
 	if dropped > 0 {
 		r.logger().Warn("refresh.rows_outside_window", slog.Int("dropped", dropped), slog.String("from", window.From.String()), slog.String("to", window.To.String()))
 	}
-	return out
+	return out, daily
 }
 
 // result reloads the finished run (with its sources and snapshot ids) and

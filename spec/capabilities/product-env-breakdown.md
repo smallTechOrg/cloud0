@@ -19,6 +19,9 @@ Shows weekly net cost by product and by environment (and product × environment)
 |---|---|---|
 | SQLite only | | |
 
+## Weekly product view
+The Cost tab's "By product" / "By environment" toggle shows, first, a weekly table (rows = ISO weeks, columns = products, Total, % change; anomaly flags and CSV export as in the service table) from `GET /api/v1/cost/by-product/weeks`, then the single-week breakdown of the selected week (services within each product). Clicking a cell of the weekly table selects that week for the breakdown. The allocation mode is shared by both.
+
 ## Business Rules
 - Same weeks, statuses, anomaly flags and CSV rules as the service view; only the column set changes.
 - Drill-down from a product cell: service → SKU → resource within that product.

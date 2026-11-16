@@ -68,6 +68,8 @@ export interface Column {
   extra?: boolean;
   /** For `stub` columns: the phase in which the column becomes real. */
   phase?: number;
+  /** Product / environment tables: which bucket the column is. */
+  group?: 'product' | 'environment' | 'shared' | 'unattributed';
 }
 
 export interface Thresholds {
@@ -1031,4 +1033,39 @@ export interface ChangeRecord {
 export interface ChangeHistoryResponse {
   entries: ChangeRecord[];
   limit: number;
+}
+
+// ---- GET /cost/daily ---------------------------------------------------------
+
+export type DailyBy = 'service' | 'project' | 'product' | 'environment';
+
+export interface DailyDay {
+  date: string;
+  week: WeekID;
+  week_status: string;
+  snapshot_id: number | null;
+  has_daily: boolean;
+  /** null = no data for the day (week not fetched, or fetched before daily capture). */
+  total: number | null;
+}
+
+export interface DailySeries {
+  key: string;
+  label: string;
+  kind: 'group' | 'other';
+  total: number;
+  values: (number | null)[];
+}
+
+export interface DailyResponse {
+  from: string;
+  to: string;
+  scope: Scope;
+  by: DailyBy;
+  top: number;
+  generated_at: string;
+  days: DailyDay[];
+  series: DailySeries[];
+  total: number;
+  notes: string[];
 }

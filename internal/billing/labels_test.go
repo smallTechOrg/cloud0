@@ -14,7 +14,7 @@ func TestSQLSelectsLabelsAndGroupsByThem(t *testing.T) {
 	for _, want := range []string{
 		"TO_JSON_STRING(labels)        AS labels_json",
 		"TO_JSON_STRING(system_labels) AS system_labels_json",
-		"GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11",
+		"GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, usage_date",
 		"SUM((SELECT IFNULL(SUM(c.amount), 0) FROM UNNEST(credits) AS c)) AS credits", // correlated-credit pattern kept
 	} {
 		if !strings.Contains(q.SQL, want) {

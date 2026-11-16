@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/smallTechOrg/cloud0/internal/costtable"
 	"github.com/smallTechOrg/cloud0/internal/testenv"
 )
 
@@ -57,7 +58,7 @@ func childEnv(dbPath string, port int) []string {
 	env := []string{}
 	for _, kv := range os.Environ() {
 		switch strings.SplitN(kv, "=", 2)[0] {
-		case "CLOUD0_PORT", "CLOUD0_DB_PATH", "CLOUD0_DATABASE_URL", "CLOUD0_BIND", "PORT":
+		case "CLOUD0_PORT", "CLOUD0_DB_PATH", "CLOUD0_DATABASE_URL", "CLOUD0_BIND", "PORT", "CLOUD0_COST_COLUMNS", "CLOUD0_VENDOR_COLUMNS":
 			continue
 		}
 		env = append(env, kv)
@@ -66,6 +67,9 @@ func childEnv(dbPath string, port int) []string {
 		testenv.DBEnv(dbPath),
 		"CLOUD0_PORT="+strconv.Itoa(port),
 		"CLOUD0_BIND=127.0.0.1",
+		// The smoke assertions name the sheet's column keys (compute_engine, vm_manager, …).
+		"CLOUD0_COST_COLUMNS="+costtable.SheetColumns,
+		"CLOUD0_VENDOR_COLUMNS="+costtable.SheetVendors,
 		"GO111MODULE=on", "GOTOOLCHAIN=local",
 	)
 }

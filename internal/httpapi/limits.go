@@ -5,8 +5,10 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/smallTechOrg/cloud0/internal/costtable"
 	"github.com/smallTechOrg/cloud0/internal/gcpsource"
 	"github.com/smallTechOrg/cloud0/internal/isoweek"
 	"github.com/smallTechOrg/cloud0/internal/limits"
@@ -228,4 +230,23 @@ func (d Deps) handlePutLimits(w http.ResponseWriter, r *http.Request) *APIError 
 	return nil
 }
 
-func limitAllowances() []limits.Allowance { return limits.Defaults() }
+// limitAllowances is the seeded catalogue minus vendor rows for vendors the
+// deployment does not track: Groq quotas appear only when
+// CLOUD0_VENDOR_COLUMNS has a "groq" column.
+func limitAllowances() []limits.Allowance {
+	tracked := map[string]bool{}
+	for _, c := range costtable.ColumnsFor(nil) {
+		if c.Kind == costtable.KindStub {
+			tracked[strings.TrimPrefix(c.Key, costtable.StubKeyPrefix)] = true
+		}
+	}
+	all := limits.Defaults()
+	out := all[:0]
+	for _, a := range all {
+		if a.Service == "Groq" && !tracked["groq"] {
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
+}
