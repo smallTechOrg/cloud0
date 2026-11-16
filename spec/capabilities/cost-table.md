@@ -27,29 +27,28 @@ Renders one row per ISO week (first→current) of net-of-credits cost per servic
 ## Business Rules
 
 ### Column order and service mapping
-Fixed columns, always present, in this order; a billing `service.description` maps by exact match after trimming and case-folding:
+Columns are not hard-coded: they come from the deployment's layout (`costtable/layout.go`, configured by `CLOUD0_COST_COLUMNS` and `CLOUD0_VENDOR_COLUMNS`). A billing `service.description` maps by exact match after trimming and case-folding.
 
-| # | key | Header (as in the sheet) | `service.description` values aggregated |
+**Dynamic layout (default, `CLOUD0_COST_COLUMNS` unset).** `week`, then one `svc:<description>` column per service with a non-zero net *or gross* in some row of the range (fully-credited services stay visible), ordered by the range's net total descending, ties by label; then `total`, `pct_change`. No vendor columns unless `CLOUD0_VENDOR_COLUMNS` is set.
+
+**Pinned layout (`CLOUD0_COST_COLUMNS` set).** `;`-separated entries `[key:]Label[=Service|Service…]` (key defaults to the label in snake_case, services to the label). The listed columns are always present, in order; any other service with net ≠ 0 in the range follows as an `svc:<description>` column flagged `extra`, sorted by label; then `total`, `pct_change`, then vendor stubs.
+
+The original "Tech Weekly Review" sheet is reproduced by this example (also `costtable.SheetColumns` / `SheetVendors`, used by the tests and the e2e suite):
+
+```
+CLOUD0_COST_COLUMNS=Compute Engine; Networking; cloud_sql:CloudSQL=Cloud SQL; Gemini API=Gemini API|Generative Language API; Cloud Run; GCS=Cloud Storage; VM manager=VM Manager; Cloud Build; Cloud Logging; Secret Manager; Artifact Registry
+CLOUD0_VENDOR_COLUMNS=groq:AI Cost (Groq); claude:claude (usage)
+```
+
+| # | key | Header | Notes |
 |---|---|---|---|
-| 1 | `week` | Week | — |
-| 2 | `compute_engine` | Compute Engine | `Compute Engine` |
-| 3 | `networking` | Networking | `Networking` |
-| 4 | `cloud_sql` | CloudSQL | `Cloud SQL` |
-| 5 | `gemini_api` | Gemini API | `Gemini API`, `Generative Language API` |
-| 6 | `cloud_run` | Cloud Run | `Cloud Run` |
-| 7 | `gcs` | GCS | `Cloud Storage` |
-| 8 | `vm_manager` | VM manager | `VM Manager` |
-| 9 | `cloud_build` | Cloud Build | `Cloud Build` |
-| 10 | `cloud_logging` | Cloud Logging | `Cloud Logging` |
-| 11 | `secret_manager` | Secret Manager | `Secret Manager` |
-| 12 | `artifact_registry` | Artifact Registry | `Artifact Registry` |
-| 13… | `svc:<description>` | the raw description | any service not listed above, one column each, sorted by label, present only if its net ≠ 0 in some row of the range |
-| n−3 | `total` | Total GCP | Σ of every service column (fixed + extra) |
-| n−2 | `pct_change` | % change | total vs previous week |
-| n−1 | `stub:groq` | AI Cost (Groq) | stub until Phase 4 |
-| n | `stub:claude` | claude (usage) | stub until Phase 4 |
+| 1 | `week` | Week | always |
+| 2… | layout keys / `svc:<description>` | per layout | see above |
+| n−1… | `total` | Total GCP | Σ of every service column (pinned + extra) |
+| | `pct_change` | % change | total vs previous week |
+| | `stub:<id>` | per `CLOUD0_VENDOR_COLUMNS` | stub until Phase 4 |
 
-The mapping lives in one place on the server (`costtable/columns.go`); the UI renders whatever `columns` the API returns.
+The layout lives in one place on the server; the UI renders whatever `columns` the API returns (its offline fallback is `Week · Total GCP · % change`).
 
 ### Values
 - Cell `net` = Σ `snapshot_rows.net` for rows of the latest snapshot whose service is in the column (and `project_id = scope` when scope ≠ all); `gross`, `credits` likewise. Fixed columns with no rows → `0`.

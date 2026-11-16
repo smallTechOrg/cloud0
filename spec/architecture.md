@@ -232,6 +232,8 @@ All variables are read by `internal/config`. `.env.example` lists exactly this t
 | `CLOUD0_PARTITION_MARGIN_DAYS` | no | `1` | Days added on each side of the usage window for the `_PARTITIONTIME` filter. |
 | `CLOUD0_LOG_LEVEL` | no | `info` | `debug` / `info` / `warn` / `error`. |
 | `CLOUD0_CURRENCY` | no | `INR` | 3-letter ISO 4217 code (validated `^[A-Z]{3}$`, upper-cased) of the billing export's `currency` column. Display only: labels every money value in the UI/CSV; no conversion. |
+| `CLOUD0_COST_COLUMNS` | no | unset → dynamic | Cost-table service columns (`costtable.ParseLayout`). Unset: one column per `service.description` with non-zero net or gross in the range, ordered by range net desc. Set: `;`-separated `[key:]Label[=Service|Service…]`, pinned in order; unlisted services with non-zero net become extra columns sorted by label. |
+| `CLOUD0_VENDOR_COLUMNS` | no | unset | Vendor stub columns after `% change`: `;`-separated `id:Label`, keys `stub:<id>`. `groq` also enables the Groq rows of the Limits tab. |
 | `CLOUD0_SMOKE_WEEK` | no (tests only) | `2026-W42` | A known complete, non-empty week used by the smoke and e2e tests. |
 | `CLOUD0_E2E_PORT` | no (tests only) | `8097` | Port Playwright starts the binary on (so e2e never collides with a running dev server on `CLOUD0_PORT`). The Go live tests use an OS-assigned free port instead. |
 

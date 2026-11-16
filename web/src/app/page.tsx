@@ -572,9 +572,11 @@ export default function Page() {
         highlightRunId={highlightRun}
       />
 
-      <footer className={styles.footer}>
-        The Vendors tab and the two vendor columns are labelled stubs until Phase 4 lands.
-      </footer>
+      {columns.some((c) => c.kind === 'stub') ? (
+        <footer className={styles.footer} data-testid="stub-footer">
+          The Vendors tab and the vendor columns are labelled stubs until Phase 4 lands.
+        </footer>
+      ) : null}
     </div>
     </CurrencyContext.Provider>
   );

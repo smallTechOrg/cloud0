@@ -40,6 +40,13 @@ export default defineConfig({
       ...process.env,
       CLOUD0_PORT: String(port),
       CLOUD0_DB_PATH: dbPath,
+      // The journeys assert the original sheet's column order; production
+      // deployments choose their own (dynamic when unset). Keep in sync with
+      // costtable.SheetColumns / SheetVendors.
+      CLOUD0_COST_COLUMNS:
+        'Compute Engine; Networking; cloud_sql:CloudSQL=Cloud SQL; Gemini API=Gemini API|Generative Language API; ' +
+        'Cloud Run; GCS=Cloud Storage; VM manager=VM Manager; Cloud Build; Cloud Logging; Secret Manager; Artifact Registry',
+      CLOUD0_VENDOR_COLUMNS: 'groq:AI Cost (Groq); claude:claude (usage)',
     },
   },
 });

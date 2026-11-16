@@ -25,6 +25,7 @@ import (
 
 	"github.com/smallTechOrg/cloud0/internal/billing"
 	"github.com/smallTechOrg/cloud0/internal/config"
+	"github.com/smallTechOrg/cloud0/internal/costtable"
 	"github.com/smallTechOrg/cloud0/internal/errorsrc"
 	"github.com/smallTechOrg/cloud0/internal/gcpsource"
 	"github.com/smallTechOrg/cloud0/internal/httpapi"
@@ -109,6 +110,12 @@ func loadConfig() (config.Config, bool) {
 		fmt.Fprintf(os.Stderr, "cloud0: configuration is invalid:\n%v\nCopy .env.example to .env and fill the variables named above.\n", err)
 		return config.Config{}, false
 	}
+	layout, err := costtable.ParseLayout(cfg.CostColumns, cfg.VendorColumns)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cloud0: configuration is invalid:\nconfig: %v (see .env.example)\n", err)
+		return config.Config{}, false
+	}
+	costtable.SetLayout(layout)
 	return cfg, true
 }
 

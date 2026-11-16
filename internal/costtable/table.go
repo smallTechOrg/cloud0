@@ -122,20 +122,19 @@ func Assemble(in Input) (Table, error) {
 		aggregate(w)
 	}
 
-	// Extra columns: unknown services with a non-zero net in some week of the range.
-	extraSet := make(map[string]bool)
+	// Extra columns: services the layout does not pin, with their range totals.
+	extras := make(map[string]ServiceTotal)
 	for _, w := range weeks {
 		for key, a := range sums[w] {
-			if IsExtraKey(key) && a.net != 0 {
-				extraSet[key[len(ExtraKeyPrefix):]] = true
+			if IsExtraKey(key) {
+				t := extras[key[len(ExtraKeyPrefix):]]
+				t.Net += a.net
+				t.Gross += a.gross
+				extras[key[len(ExtraKeyPrefix):]] = t
 			}
 		}
 	}
-	extras := make([]string, 0, len(extraSet))
-	for s := range extraSet {
-		extras = append(extras, s)
-	}
-	columns := Columns(extras)
+	columns := ColumnsFor(extras)
 	valueKeys := make([]string, 0, len(columns))
 	for _, c := range columns {
 		if c.Kind == KindService {

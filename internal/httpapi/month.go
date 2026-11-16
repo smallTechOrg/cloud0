@@ -147,19 +147,18 @@ func (d Deps) handleCostMonth(w http.ResponseWriter, r *http.Request) *APIError 
 		aggregate(m)
 	}
 
-	extraSet := map[string]bool{}
+	extras := map[string]costtable.ServiceTotal{}
 	for _, m := range months {
 		for k, a := range bySvc[m.String()] {
-			if costtable.IsExtraKey(k) && a.net != 0 {
-				extraSet[k[len(costtable.ExtraKeyPrefix):]] = true
+			if costtable.IsExtraKey(k) {
+				t := extras[k[len(costtable.ExtraKeyPrefix):]]
+				t.Net += a.net
+				t.Gross += a.gross
+				extras[k[len(costtable.ExtraKeyPrefix):]] = t
 			}
 		}
 	}
-	extras := make([]string, 0, len(extraSet))
-	for s := range extraSet {
-		extras = append(extras, s)
-	}
-	columns := costtable.Columns(extras)
+	columns := costtable.ColumnsFor(extras)
 	columns[0] = costtable.Column{Key: "month", Label: "Month", Kind: KindMonth}
 	var valueKeys []string
 	for _, c := range columns {
