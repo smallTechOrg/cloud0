@@ -64,6 +64,7 @@ cp .env.example .env
 | `CLOUD0_OPENROUTER_API_KEY` | no | unset | Enables the optional LLM rule proposer (`POST /api/v1/attribution/propose`). Unset = disabled (503, no outbound call). Proposals are never applied automatically; prompts carry resource names/labels only, no amounts. Secret: keep in `.env`. |
 | `CLOUD0_LLM_MODEL` | no | `anthropic/claude-sonnet-4-6` | OpenRouter model slug used by the rule proposer. |
 | `CLOUD0_ALERTS_CREDENTIALS` | no | unset | Absolute path to the **alerts-writer** service-account key (a second, separate account; see section 9). Unset = Alerts, Incidents and Budgets are read-only: previews work, Apply and budget reads answer `503 alerts_not_configured`. Secret: keep the key outside the repo. |
+| `CLOUD0_LABELS_CREDENTIALS` | no | unset | Absolute path to the **labels-writer** service-account key (a third, separate account; see "Assign products and labels"). Unset = the Attribution tab still assigns products with cloud0 rules and shows `gcloud` / Terraform for labels, but cannot write them. Secret: keep the key outside the repo. |
 | `CLOUD0_PASSWORD` | no (yes on Cloud Run) | unset | Puts every page and API call behind this password: browsers sign in once on `/login` (one password field, no username; a 30-day session cookie), scripts send it with HTTP Basic auth and an empty username (`curl -u :PASSWORD`). Unset = no login (local use). Changing it signs everyone out. Leave it out of `.env`, or the e2e suite is locked out too. Secret. |
 | `CLOUD0_SMOKE_WEEK` | tests only | `2026-W42` | A known complete, non-empty week for smoke/e2e tests. |
 | `CLOUD0_E2E_PORT` | tests only | `8097` | Port Playwright starts the binary on. |
@@ -258,6 +259,31 @@ gcloud billing accounts add-iam-policy-binding <BILLING_ACCOUNT_ID> --member=ser
 ```
 
 **Preview-then-apply safety model.** No change reaches GCP in one step. Every create / update / delete / snooze is first **previewed**: the server returns a diff, a `gcloud` equivalent and a short-lived token (10 minutes). **Apply** re-reads the live resource and refuses with `409 preview_stale` if it changed since the preview; deletes also need an explicit confirmation. New policies are created from templates and labelled `managed-by=cloud0`; hand-made policies are only replaced through the adopt preview, which never deletes the old policy for you. Every applied write is recorded in the change history. Previews work with the reader account; Apply needs `CLOUD0_ALERTS_CREDENTIALS`.
+
+### Assign products and labels (Attribution tab)
+
+The Attribution tab starts with **Assign products**: every billed resource of the week, grouped so one decision covers what belongs together (a VM and its boot disk share a name). Select rows, type a product (existing or new) and an environment, and click **Assign**.
+
+- **Labels are the standard.** The product is carried by the plain GCP labels `product` and `env`. They appear in the billing export's `labels` column, so any FinOps or reporting tool can use them without cloud0. cloud0 honours them first, ahead of every rule.
+- **cloud0 rules make it count immediately.** Assign saves a user rule (priority tier 50, so it beats seeded guesses) that applies to every week, including history, because GCP labels only reach billing for usage *after* they are written. Resource-less billing lines (a load balancer rule, Secret Manager) can only be assigned this way.
+- **Write GCP labels** (optional, needs the labels-writer key): "Assign + write GCP labels…" reads the live labels, shows a per-resource diff plus the `gcloud` and **Terraform** equivalents, and writes only after you click Write. The write merges: other labels are untouched. It refuses with `409 preview_stale` if the live labels changed since the preview, and each write is recorded in the change history (`kind=labels`).
+- **Terraform-managed infrastructure:** copy the Terraform from the preview into the repo instead (or as well). A label written directly in GCP on a Terraform-managed resource is removed by the next `terraform apply` unless the Terraform has it too.
+- **Export:** `GET /api/v1/attribution/export?format=csv|json` gives the attribution as FOCUS-style columns (`SubAccountId`, `ResourceName`, `ServiceName`, `EffectiveCost`, `Tags`, plus `x_Product`, `x_Environment`) to join with any reporting tool.
+
+Supported label writes: Compute Engine instances and disks, Cloud SQL instances, Cloud Storage buckets. **Cloud Run** services and jobs need `iam.serviceaccounts.actAs` on their runtime service account for *any* update, which is a power to run code as that account; cloud0 deliberately does not hold it, so for Cloud Run the preview shows the exact `gcloud` and Terraform to run yourself.
+
+**Labels-writer account (one-time, all values are placeholders):**
+
+```sh
+P=<PROJECT_ID>
+gcloud iam roles create cloud0LabelWriter --project=$P --title="cloud0 label writer" --stage=GA --permissions=\
+compute.instances.get,compute.instances.setLabels,compute.disks.get,compute.disks.setLabels,compute.zoneOperations.get,\
+cloudsql.instances.get,cloudsql.instances.update,storage.buckets.get,storage.buckets.update
+gcloud iam service-accounts create cloud0-labels --project=$P
+gcloud projects add-iam-policy-binding $P --member=serviceAccount:cloud0-labels@$P.iam.gserviceaccount.com --role=projects/$P/roles/cloud0LabelWriter
+```
+
+Grant the role on every project in `CLOUD0_GCP_PROJECTS` whose resources you want to label (use `roles/…/cloud0LabelWriter` as created above). Create a key, keep it outside the repo and set `CLOUD0_LABELS_CREDENTIALS`. On Cloud Run: `bash deploy/provision.sh --labels-key <key.json>` stores it as secret `cloud0-labels-key`, and the deploy workflow mounts it when present.
 
 **Never run Apply against a real project while testing.** The e2e suite and the tour use only reads and previews; the Go live tests create disabled `cloud0-test-*` objects and delete them again.
 

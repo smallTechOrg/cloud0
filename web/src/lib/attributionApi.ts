@@ -4,14 +4,17 @@
 // invalid_dimension, proposer_not_configured, proposer_failed, plus the common
 // ones).
 
-import { request } from './api';
+import { API_BASE, request } from './api';
 import type { CostTableResponse, Scope, WeekID } from './types';
 import type {
   AllocateMode,
   BreakdownResponse,
   ExplainRequest,
   ExplainResponse,
+  LabelItemIn,
+  LabelPlan,
   LabelSuggestionsResponse,
+  ResourcesResponse,
   ProposeRequest,
   ProposeResponse,
   RightsizingResponse,
@@ -111,4 +114,22 @@ export function getRightsizing(params: { week?: WeekID; scope?: Scope } = {}): P
 /** 503 proposer_not_configured when CLOUD0_OPENROUTER_API_KEY is unset. Never applies rules. */
 export function proposeRules(body: ProposeRequest = {}): Promise<ProposeResponse> {
   return request<ProposeResponse>('/attribution/propose', send('POST', body));
+}
+
+export function getResources(params: { week?: WeekID; scope?: Scope } = {}): Promise<ResourcesResponse> {
+  return request<ResourcesResponse>(`/attribution/resources${qs(params)}`);
+}
+
+/** Reads live labels from GCP and returns the diff, gcloud and Terraform for each item; writes nothing. */
+export function previewLabels(items: LabelItemIn[]): Promise<LabelPlan> {
+  return request<LabelPlan>('/labels/preview', send('POST', { items }));
+}
+
+/** Writes the previewed labels; 409 preview_stale when the live labels changed since the preview. */
+export function applyLabels(items: LabelItemIn[], previewHash: string): Promise<LabelPlan> {
+  return request<LabelPlan>('/labels/apply', send('POST', { items, preview_hash: previewHash }));
+}
+
+export function attributionExportUrl(params: { week?: WeekID; scope?: Scope; format: 'csv' | 'json' }): string {
+  return `${API_BASE}/attribution/export${qs(params)}`;
 }

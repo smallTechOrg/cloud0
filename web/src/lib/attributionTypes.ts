@@ -384,3 +384,97 @@ export interface AttributionDrillFilter {
   product?: string;
   environment?: string;
 }
+
+// ---- Assign products + GCP labels (internal/attribution/resources.go, internal/httpapi/labels.go) ----
+
+export type ResourceSource = 'label' | 'rule' | 'shared' | 'none';
+
+export interface LabelTarget {
+  project: string;
+  type: string;
+  name: string;
+  location?: string;
+  resource: string;
+  writable: boolean;
+  note?: string;
+}
+
+export interface ResourceMember {
+  key: string;
+  kind: 'resource' | 'sku';
+  resource_name: string;
+  service: string;
+  sku?: string;
+  net: number;
+}
+
+export interface ResourceGroup {
+  id: string;
+  name: string;
+  kind: 'resource' | 'sku';
+  project_id: string;
+  services: string[];
+  net: number;
+  share_pct: number;
+  /** GCP labels present on the billing rows. */
+  labels: Record<string, string>;
+  product: string;
+  environment: string;
+  shared: boolean;
+  source: ResourceSource;
+  rule_id: number | null;
+  /** The rule match that covers every member of the group. */
+  match: RuleMatch;
+  members: ResourceMember[];
+  targets: LabelTarget[];
+  suggested: { product: string; environment: string | null; confidence: Confidence; basis: string } | null;
+}
+
+export interface ResourcesResponse {
+  week: WeekID;
+  scope: Scope;
+  snapshot: AttributionSnapshotRef | null;
+  labels_captured: boolean;
+  total_net: number;
+  count: number;
+  truncated: boolean;
+  groups: ResourceGroup[];
+  products: { product: string; net: number; resources: number }[];
+  environments: string[];
+  label_writer: { enabled: boolean; hint?: string };
+}
+
+export interface LabelItemIn {
+  target: { project: string; type: string; name: string; location?: string };
+  labels: Record<string, string>;
+}
+
+export interface LabelDiff {
+  key: string;
+  before: string | null;
+  after: string;
+  change: 'add' | 'change' | 'same';
+}
+
+export interface LabelItemOut {
+  target: LabelItemIn['target'];
+  current: Record<string, string>;
+  add: Record<string, string>;
+  diff: LabelDiff[];
+  noop: boolean;
+  command: string | null;
+  terraform: string;
+  risk: string;
+  after?: Record<string, string>;
+  applied: boolean;
+  error: { code: string; message: string; hint?: string } | null;
+}
+
+export interface LabelPlan {
+  preview_hash: string;
+  items: LabelItemOut[];
+  changes: number;
+  applied: number;
+  failed: number;
+  note: string;
+}

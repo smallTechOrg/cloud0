@@ -61,7 +61,7 @@ func parseGlobalName(g string) parsedGlobal {
 	switch {
 	case strings.HasPrefix(p.Host, "compute.") && p.Kind == "instances":
 		p.Resource = TypeComputeInstance
-	case strings.HasPrefix(p.Host, "compute.") && p.Kind == "disks":
+	case strings.HasPrefix(p.Host, "compute.") && (p.Kind == "disks" || p.Kind == "disk"):
 		p.Resource = TypeComputeDisk
 	case strings.HasPrefix(p.Host, "compute.") && p.Kind == "addresses":
 		p.Resource = TypeComputeAddress

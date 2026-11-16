@@ -41,6 +41,7 @@ import { downloadTextFile } from '@/lib/csv';
 import { useCurrency } from '@/lib/currency';
 import { formatMoney } from '@/lib/format';
 import type { Coverage } from '@/lib/attributionTypes';
+import AssignProducts from './AssignProducts';
 import ExplainDrawer, { type ExplainState } from './ExplainDrawer';
 import LabelSuggestions from './LabelSuggestions';
 import ProposeDialog, { type ProposeState } from './ProposeDialog';
@@ -445,6 +446,16 @@ export default function AttributionPanel({ week, scope, refreshToken }: Props) {
         enabledCount={enabledCount}
         noSnapshot={noSnapshot}
         week={week}
+      />
+
+      <AssignProducts
+        week={week}
+        scope={scope}
+        refreshToken={refreshToken}
+        onChanged={() => {
+          rulesQ.reload();
+          reloadWeekData();
+        }}
       />
 
       <div ref={editorRef}>

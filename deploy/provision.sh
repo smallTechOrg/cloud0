@@ -22,6 +22,8 @@
 #
 # --alerts-key stores the alerts-writer key in Secret Manager (cloud0-alerts-key) so Apply works on Cloud Run; without
 # it the Alerts, Incidents and Budgets tabs are read-only there.
+# --labels-key does the same for the labels-writer key (cloud0-labels-key): the Attribution tab can then write
+# product/env labels to GCP resources; without it only cloud0 rules, exports and gcloud/Terraform output are offered.
 set -euo pipefail
 
 GH_REPO="${GH_REPO:-smallTechOrg/cloud0}"
@@ -30,6 +32,7 @@ AR_REPO=cloud0
 WIF_POOL=github
 WIF_PROVIDER=cloud0-github
 ALERTS_SECRET=cloud0-alerts-key
+LABELS_SECRET=cloud0-labels-key
 SQL_INSTANCE="${SQL_INSTANCE:-ai-agent-db}"
 DB_NAME=cloud0
 DB_USER=cloud0_app
@@ -38,10 +41,12 @@ DBINIT_JOB=cloud0-dbinit
 DEPLOY_REFS="${DEPLOY_REFS:-refs/heads/main refs/heads/feature/cloud0-20261026-1851-v0.1}"
 
 ALERTS_KEY=""
+LABELS_KEY=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --alerts-key) shift; ALERTS_KEY="${1:-}"; [ -f "$ALERTS_KEY" ] || { echo "--alerts-key needs an existing key file" >&2; exit 2; } ;;
-    *) echo "usage: $0 [--alerts-key <path>]" >&2; exit 2 ;;
+    --labels-key) shift; LABELS_KEY="${1:-}"; [ -f "$LABELS_KEY" ] || { echo "--labels-key needs an existing key file" >&2; exit 2; } ;;
+    *) echo "usage: $0 [--alerts-key <path>] [--labels-key <path>]" >&2; exit 2 ;;
   esac
   shift
 done
@@ -204,6 +209,25 @@ if [ -n "$ALERTS_KEY" ]; then
   retry gcloud secrets add-iam-policy-binding "$ALERTS_SECRET" --member "serviceAccount:$RUN_SA" \
     --role roles/secretmanager.secretAccessor "${G[@]}"
   granted "cloud0-reader: roles/secretmanager.secretAccessor on $ALERTS_SECRET"
+fi
+
+if [ -n "$LABELS_KEY" ]; then
+  echo "== Labels-writer key (Secret Manager)"
+  if gcloud secrets describe "$LABELS_SECRET" "${G[@]}" >/dev/null 2>&1; then
+    exists "secret $LABELS_SECRET"
+  else
+    gcloud secrets create "$LABELS_SECRET" --replication-policy automatic "${G[@]}" >/dev/null
+    created "secret $LABELS_SECRET"
+  fi
+  if [ -n "$(gcloud secrets versions list "$LABELS_SECRET" --filter=state=ENABLED --limit=1 --format='value(name)' "${G[@]}")" ]; then
+    exists "an enabled version of $LABELS_SECRET (rotate with: gcloud secrets versions add $LABELS_SECRET --data-file=-)"
+  else
+    gcloud secrets versions add "$LABELS_SECRET" --data-file=- "${G[@]}" < "$LABELS_KEY" >/dev/null
+    created "version of $LABELS_SECRET"
+  fi
+  retry gcloud secrets add-iam-policy-binding "$LABELS_SECRET" --member "serviceAccount:$RUN_SA" \
+    --role roles/secretmanager.secretAccessor "${G[@]}"
+  granted "cloud0-reader: roles/secretmanager.secretAccessor on $LABELS_SECRET"
 fi
 
 echo "== GitHub repository secrets ($GH_REPO)"

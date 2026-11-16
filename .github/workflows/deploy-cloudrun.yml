@@ -135,6 +135,16 @@ jobs:
             echo "::notice::No cloud0-alerts-key secret: Alerts, Incidents and Budgets stay read-only."
           fi
 
+          # Writing GCP labels from the Attribution tab needs the labels-writer key (a third, separate account);
+          # without it the tab still assigns products through cloud0 rules and shows gcloud/Terraform for labels.
+          LABELS_KEY_VERSION="$(gcloud secrets versions list cloud0-labels-key --filter=state=ENABLED --limit=1 --format='value(name)' 2>/dev/null || true)"
+          if [ -n "$LABELS_KEY_VERSION" ]; then
+            echo "LABELS_SECRET=/secrets/labels/key.json=cloud0-labels-key:latest" >> "$GITHUB_ENV"
+            export CLOUD0_LABELS_CREDENTIALS=/secrets/labels/key.json
+          else
+            echo "::notice::No cloud0-labels-key secret: GCP label writes are off (cloud0 rules and exports still work)."
+          fi
+
           # YAML env file (not --set-env-vars): CLOUD0_GCP_PROJECTS holds commas. It replaces every variable each
           # deploy and is shared by the migrate job and the service. RUNNER_TEMP is wiped when the job ends.
           ENV_FILE="${RUNNER_TEMP}/cloud0-env.yaml"
@@ -142,7 +152,7 @@ jobs:
           python3 - "$ENV_FILE" <<'PY'
           import json, os, sys
           env = {k: os.environ[k] for k in ["CLOUD0_GCP_PROJECTS", "CLOUD0_BIGQUERY_PROJECT", "CLOUD0_BILLING_EXPORT_TABLE", "CLOUD0_PASSWORD", "CLOUD0_DATABASE_URL"]}
-          env.update({k: os.environ[k] for k in ["CLOUD0_BILLING_ACCOUNT_ID", "CLOUD0_OPENROUTER_API_KEY", "CLOUD0_ALERTS_CREDENTIALS", "CLOUD0_COST_COLUMNS", "CLOUD0_VENDOR_COLUMNS"] if os.environ.get(k)})
+          env.update({k: os.environ[k] for k in ["CLOUD0_BILLING_ACCOUNT_ID", "CLOUD0_OPENROUTER_API_KEY", "CLOUD0_ALERTS_CREDENTIALS", "CLOUD0_LABELS_CREDENTIALS", "CLOUD0_COST_COLUMNS", "CLOUD0_VENDOR_COLUMNS"] if os.environ.get(k)})
           env.update(CLOUD0_LOG_LEVEL="info")
           open(sys.argv[1], "w").write("".join(f"{k}: {json.dumps(v)}\n" for k, v in env.items()))
           PY
@@ -166,7 +176,9 @@ jobs:
         run: |
           set -euo pipefail
           SECRET_FLAGS=()
-          if [ -n "${ALERTS_SECRET:-}" ]; then SECRET_FLAGS=(--update-secrets="$ALERTS_SECRET"); fi
+          SECRETS="${ALERTS_SECRET:-}"
+          if [ -n "${LABELS_SECRET:-}" ]; then SECRETS="${SECRETS:+$SECRETS,}${LABELS_SECRET}"; fi
+          if [ -n "$SECRETS" ]; then SECRET_FLAGS=(--update-secrets="$SECRETS"); fi
 
           # Revisions are named after the commit; a re-run of the same commit (e.g. a drill) must not collide.
           SUFFIX="sha-${GITHUB_SHA::7}"
