@@ -23,6 +23,22 @@ concurrency:
 permissions: { contents: read }
 
 jobs:
+  terraform:
+    name: Terraform
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.13.10
+      - name: Format, init (no backend), validate
+        working-directory: infra/terraform
+        run: |
+          tofu fmt -check -recursive
+          tofu init -backend=false -input=false
+          tofu validate
+
   test:
     name: Test
     runs-on: ubuntu-latest
