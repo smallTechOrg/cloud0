@@ -105,6 +105,8 @@ class FixGenerated(unittest.TestCase):
 
     def test_cloud_run_template_owned_by_app_ci(self):
         self.assertIn("ignore_changes = [client, client_version, template", self.out)
+        # traffic too: otherwise an apply would roll traffic back to an older revision after a deploy
+        self.assertIn("build_config, traffic]", self.out)
 
     def test_never_disable_apis(self):
         self.assertIn("disable_on_destroy = false", self.out)

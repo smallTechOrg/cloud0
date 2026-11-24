@@ -29,7 +29,7 @@ KEEP_EMPTY = {"ttl", "default_kms_key_name"}
 
 # resource type -> (ignore_changes attributes, reason). Printed into a lifecycle block.
 IGNORE = {
-    "google_cloud_run_v2_service": (["client", "client_version", "template", "scaling", "build_config"], "revisions are deployed by the app's own CI"),
+    "google_cloud_run_v2_service": (["client", "client_version", "template", "scaling", "build_config", "traffic"], "revisions and traffic are rolled out by the app's own CI"),
     "google_cloud_run_v2_job": (["client", "client_version", "template"], "job revisions are deployed by the app's own CI"),
     "google_cloud_run_domain_mapping": (["spec[0].certificate_mode"], "API returns it empty; unset would default to AUTOMATIC and force a replace"),
     "google_artifact_registry_repository": (["cleanup_policies"], "provider rejects the TAG_STATE_UNSPECIFIED the API returns"),
