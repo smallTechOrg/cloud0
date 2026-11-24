@@ -2,7 +2,7 @@
 
 Internal dashboard for a small GCP shop that replaces the hand-maintained "Tech Weekly Review" spreadsheet: it pulls the detailed billing export from BigQuery, stores an immutable snapshot per ISO week (Mon–Sun, UTC) and renders the weekly Cost table — net of credits — with drill-downs, provenance, anomaly flags, CSV export and notes. One Go binary serves the JSON API and the embedded Next.js UI on one origin. No AI in the product; nothing is scheduled.
 
-Infrastructure as code: [`infra/terraform/`](infra/terraform/) (cloud0's own GCP footprint; Terraform or OpenTofu).
+Infrastructure as code: [`infra/terraform/`](infra/terraform/) (cloud0's own GCP footprint; Terraform or OpenTofu). To bring an **existing** project under Terraform, use [`tools/iac-export/`](tools/iac-export/): it maps the live project to import blocks and config that plan clean.
 
 Design and contract: [`spec/`](spec/) (`architecture.md`, `api.md`, `data.md`, `ui.md`, `roadmap.md`). Build journal: [`NOTES.md`](NOTES.md).
 
