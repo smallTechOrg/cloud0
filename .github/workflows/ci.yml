@@ -38,6 +38,8 @@ jobs:
           tofu fmt -check -recursive
           tofu init -backend=false -input=false
           tofu validate
+      - name: iac-export fixer tests (credential redaction must hold)
+        run: python3 -m unittest tools/iac-export/test_fix_generated.py
 
   test:
     name: Test
