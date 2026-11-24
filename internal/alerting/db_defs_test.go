@@ -91,7 +91,7 @@ func TestDBGolden(t *testing.T) {
 		{"sql_disk_edited", TplSQLDiskHigh, TemplateParams{Threshold: dbPtrF(70), DurationSeconds: dbPtrI(60)}, dbCtx()},
 		{"uptime_warning_one", TplUptimeDown, TemplateParams{}, dbCtx("check-1")},
 		{"uptime_critical_two", TplUptimeDown, TemplateParams{Instance: "critical"}, dbCtx("check-1", "check-2")},
-		{"uptime_edited", TplUptimeDown, TemplateParams{Instance: "warning", DurationSeconds: dbPtrI(1200), Severity: SevError}, dbCtx("check-1")},
+		{"uptime_edited", TplUptimeDown, TemplateParams{Instance: "warning", Threshold: dbPtrF(4), DurationSeconds: dbPtrI(1200), Severity: SevError}, dbCtx("check-1")},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -185,7 +185,7 @@ func TestDBUptimeShape(t *testing.T) {
 	}
 	m := dbDecode(t, one.Policy)
 	cond := dbCondition(m)
-	if m["displayName"] != "cloud0: Service down (10 min)" || m["severity"] != "WARNING" || cond["duration"] != "600s" {
+	if m["displayName"] != "cloud0: Service down (30 min)" || m["severity"] != "WARNING" || cond["duration"] != "1800s" {
 		t.Errorf("warning: %v %v %v", m["displayName"], m["severity"], cond["duration"])
 	}
 	labels := m["userLabels"].(map[string]any)
@@ -197,7 +197,7 @@ func TestDBUptimeShape(t *testing.T) {
 	}
 	agg := cond["aggregations"].([]any)[0].(map[string]any)
 	if agg["alignmentPeriod"] != "60s" || agg["perSeriesAligner"] != "ALIGN_NEXT_OLDER" || agg["crossSeriesReducer"] != "REDUCE_COUNT_FALSE" ||
-		agg["groupByFields"].([]any)[0] != "metric.label.check_id" || cond["comparison"] != "COMPARISON_GT" || cond["thresholdValue"] != float64(1) {
+		agg["groupByFields"].([]any)[0] != "metric.label.check_id" || cond["comparison"] != "COMPARISON_GT" || cond["thresholdValue"] != float64(2) {
 		t.Errorf("aggregation %v", agg)
 	}
 
@@ -209,6 +209,9 @@ func TestDBUptimeShape(t *testing.T) {
 	cond = dbCondition(m)
 	if m["displayName"] != "cloud0: Service down (2 h)" || m["severity"] != "CRITICAL" || cond["duration"] != "7200s" {
 		t.Errorf("critical: %v %v %v", m["displayName"], m["severity"], cond["duration"])
+	}
+	if dbCondition(m)["thresholdValue"] != float64(2) {
+		t.Errorf("critical threshold %v", dbCondition(m)["thresholdValue"])
 	}
 	if m["userLabels"].(map[string]any)[LabelInstance] != "critical" {
 		t.Errorf("labels %v", m["userLabels"])
@@ -252,6 +255,9 @@ func TestDBErrors(t *testing.T) {
 		{TplSQLDown, TemplateParams{Severity: "PANIC"}},
 		{TplSQLDown, TemplateParams{Threshold: dbPtrF(1)}},
 		{TplUptimeDown, TemplateParams{DurationSeconds: dbPtrI(61)}},
+		{TplUptimeDown, TemplateParams{Threshold: dbPtrF(0)}},
+		{TplUptimeDown, TemplateParams{Threshold: dbPtrF(7)}},
+		{TplUptimeDown, TemplateParams{Threshold: dbPtrF(2.5)}},
 	}
 	for _, c := range bad {
 		if _, err := dbBuild(t, c.id, c.p, dbCtx("c")); !errors.Is(err, ErrInvalidParams) {

@@ -171,7 +171,7 @@ func TestAdoptUptimeBothShapes(t *testing.T) {
 			t.Fatalf("%s: %d previews", shape, len(got.Previews))
 		}
 		w, c := params(t, eng.reqs[0]), params(t, eng.reqs[1])
-		if eng.reqs[0].TemplateID != TplUptimeDown || w.Instance != "warning" || w.Severity != SevWarning || *w.DurationSeconds != 600 ||
+		if eng.reqs[0].TemplateID != TplUptimeDown || w.Instance != "warning" || w.Severity != SevWarning || *w.DurationSeconds != 1800 ||
 			c.Instance != "critical" || c.Severity != SevCritical || *c.DurationSeconds != 7200 {
 			t.Fatalf("%s: %+v %+v", shape, w, c)
 		}

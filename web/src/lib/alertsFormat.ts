@@ -207,7 +207,7 @@ export function isSpecialKey(key: string): boolean {
 
 /** Uptime template: switching the instance prefills the frozen escalation defaults. */
 export function uptimeInstanceDefaults(instance: string): { duration_seconds: number; severity: AlertSeverity } {
-  return instance === 'critical' ? { duration_seconds: 7200, severity: 'CRITICAL' } : { duration_seconds: 600, severity: 'WARNING' };
+  return instance === 'critical' ? { duration_seconds: 7200, severity: 'CRITICAL' } : { duration_seconds: 1800, severity: 'WARNING' };
 }
 
 /** Managed policies installed from a template. */

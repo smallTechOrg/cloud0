@@ -16,17 +16,17 @@
         "comparison": "COMPARISON_GT",
         "duration": "7200s",
         "filter": "metric.type = \"monitoring.googleapis.com/uptime_check/check_passed\" AND resource.type = \"uptime_url\" AND metric.labels.check_id = one_of(\"check-1\", \"check-2\")",
-        "thresholdValue": 1,
+        "thresholdValue": 2,
         "trigger": {
           "count": 1
         }
       },
-      "displayName": "Uptime check failing for 2 h"
+      "displayName": "Uptime check failing from 3+ regions for 2 h"
     }
   ],
   "displayName": "cloud0: Service down (2 h)",
   "documentation": {
-    "content": "**Service down (prolonged outage).** An uptime check has been failing for 2 h (2 check(s) covered).\n\nWhat to check:\n- The endpoint from outside (curl the health URL) and the service/VM behind it.\n- Load balancer / DNS / TLS certificate state.\n- Recent deploys.\n\nThis is the critical policy; cloud0 runs a \"warning\" (10 min) and a \"critical\" (2 h) policy per project.\n\nManaged by cloud0 (template `uptime_down`, instance `critical`); edit it from the Alerts tab, not in the console.",
+    "content": "**Service down (prolonged outage).** An uptime check has been failing from at least 3 checker regions for 2 h (2 check(s) covered).\n\nWhat to check:\n- The endpoint from outside (curl the health URL) and the service/VM behind it.\n- Load balancer / DNS / TLS certificate state.\n- Recent deploys.\n\nThis is the critical policy; cloud0 runs a \"warning\" (30 min) and a \"critical\" (2 h) policy per project.\n\nManaged by cloud0 (template `uptime_down`, instance `critical`); edit it from the Alerts tab, not in the console.",
     "mimeType": "text/markdown"
   },
   "enabled": true,

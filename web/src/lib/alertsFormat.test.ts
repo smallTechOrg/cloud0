@@ -83,7 +83,7 @@ describe('templates', () => {
     expect(installedPolicies(policiesFixture.policies, 'vm_cpu_high')).toHaveLength(0);
   });
   it('uptime instance defaults follow the frozen escalation', () => {
-    expect(uptimeInstanceDefaults('warning')).toEqual({ duration_seconds: 600, severity: 'WARNING' });
+    expect(uptimeInstanceDefaults('warning')).toEqual({ duration_seconds: 1800, severity: 'WARNING' });
     expect(uptimeInstanceDefaults('critical')).toEqual({ duration_seconds: 7200, severity: 'CRITICAL' });
   });
 });

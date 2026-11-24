@@ -211,7 +211,7 @@ func (a *adopter) uptimeShape(ctx context.Context, req AdoptRequest) (AdoptPrevi
 	for _, s := range []struct {
 		inst, sev string
 		dur       int
-	}{{"warning", SevWarning, 600}, {"critical", SevCritical, 7200}} {
+	}{{"warning", SevWarning, dbUptimeWarningSeconds}, {"critical", SevCritical, dbUptimeCriticalSeconds}} {
 		dur := s.dur
 		pv, err := a.policyPreview(ctx, all, project, TplUptimeDown, TemplateParams{Instance: s.inst, Severity: s.sev, DurationSeconds: &dur})
 		if err != nil {
@@ -220,7 +220,7 @@ func (a *adopter) uptimeShape(ctx context.Context, req AdoptRequest) (AdoptPrevi
 		previews = append(previews, pv)
 	}
 	out := AdoptPreview{Shape: req.Shape, Previews: previews, Notes: []string{
-		"One managed uptime rule with escalation: WARNING after 10 min down, CRITICAL after 2 h down.",
+		"One managed uptime rule with escalation: WARNING after 30 min down from 3+ regions, CRITICAL after 2 h down.",
 		"Both previews are created whichever uptime shape was chosen; apply each independently.",
 	}}
 	for _, p := range replaces {

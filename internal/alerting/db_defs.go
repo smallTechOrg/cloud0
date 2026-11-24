@@ -243,19 +243,32 @@ func dbSQLMemoryDef() templateDef {
 
 // ---- uptime_down -----------------------------------------------------------
 
+// Uptime thresholds. A check runs from up to 6 regions (Monitoring's default
+// set); requiring half of them to fail, for 30 minutes, keeps single-region
+// checker blips and short restarts from paging while real outages still do.
+const (
+	dbUptimeMaxRegions      = 6
+	dbUptimeDefaultRegions  = 3
+	dbUptimeWarningSeconds  = 1800
+	dbUptimeCriticalSeconds = 7200
+)
+
 func dbUptimeDef() templateDef {
 	t := Template{
 		ID: TplUptimeDown, Kind: KindUptime, Title: "Service down",
-		Description: "An uptime check fails for the configured time. Two managed policies: instance \"warning\" (10 min, WARNING) and \"critical\" (2 h, CRITICAL).",
+		Description: "An uptime check fails from at least the configured number of checker regions for the configured time. Two managed policies: instance \"warning\" (30 min, WARNING) and \"critical\" (2 h, CRITICAL).",
 		Severity:    SevCritical, DefaultEnabled: true,
 		ParamSpecs: []ParamSpec{
+			{Key: "threshold", Label: "Failing regions", Type: "number", Unit: "regions", Min: dbF(1), Max: dbF(dbUptimeMaxRegions), Options: []string{},
+				Help: "Alert only when at least this many checker regions fail at once. One or two regions failing is usually a checker-side blip, not an outage."},
 			dbDurationSpec(), dbSeveritySpec(), dbEnabledSpec(),
 			{Key: "instance", Label: "Escalation level", Type: "enum", Options: []string{dbInstanceWarning, dbInstanceCritical},
-				Help: "warning = early (10 min) notice, critical = prolonged (2 h) outage; each is its own policy."},
+				Help: "warning = early (30 min) notice, critical = prolonged (2 h) outage; each is its own policy."},
 		},
 		// Defaults describe the "warning" instance; Build switches to the critical
 		// defaults when Instance is "critical" and these were left untouched.
-		Defaults:  TemplateParams{DurationSeconds: dbI(600), Severity: SevWarning, Enabled: dbB(true), Instance: dbInstanceWarning},
+		Defaults: TemplateParams{Threshold: dbF(dbUptimeDefaultRegions), DurationSeconds: dbI(dbUptimeWarningSeconds), Severity: SevWarning,
+			Enabled: dbB(true), Instance: dbInstanceWarning},
 		Installed: []string{}, CoveredResources: []CoveredResource{},
 	}
 	return templateDef{Template: t, Build: func(p TemplateParams, ctx BuildContext) (Built, error) {
@@ -266,11 +279,18 @@ func dbUptimeDef() templateDef {
 		if inst != dbInstanceWarning && inst != dbInstanceCritical {
 			return Built{}, fmt.Errorf("%w: instance %q must be %q or %q", ErrInvalidParams, inst, dbInstanceWarning, dbInstanceCritical)
 		}
-		if inst == dbInstanceCritical && p.DurationSeconds != nil && *p.DurationSeconds == 600 && p.Severity == SevWarning {
-			p.DurationSeconds, p.Severity = dbI(7200), SevCritical
+		if inst == dbInstanceCritical && p.DurationSeconds != nil && *p.DurationSeconds == dbUptimeWarningSeconds && p.Severity == SevWarning {
+			p.DurationSeconds, p.Severity = dbI(dbUptimeCriticalSeconds), SevCritical
 		}
-		if err := dbValidate(p, false); err != nil {
+		if p.Threshold == nil {
+			p.Threshold = dbF(dbUptimeDefaultRegions) // policies saved before the threshold existed
+		}
+		if err := dbValidate(p, true); err != nil {
 			return Built{}, err
+		}
+		regions := *p.Threshold
+		if regions < 1 || regions > dbUptimeMaxRegions || regions != math.Trunc(regions) {
+			return Built{}, fmt.Errorf("%w: threshold (failing regions) %v must be a whole number from 1 to %d", ErrInvalidParams, regions, dbUptimeMaxRegions)
 		}
 		ids, err := dbUptimeIDs(p, ctx)
 		if err != nil {
@@ -285,22 +305,22 @@ func dbUptimeDef() templateDef {
 		agg1 := dbMap{"alignmentPeriod": "60s", "perSeriesAligner": "ALIGN_NEXT_OLDER",
 			"crossSeriesReducer": "REDUCE_COUNT_FALSE", "groupByFields": []string{"metric.label.check_id"}}
 		cond := dbMap{
-			"displayName": fmt.Sprintf("Uptime check failing for %s", dbHumanDuration(dur)),
+			"displayName": fmt.Sprintf("Uptime check failing from %d+ regions for %s", int(regions), dbHumanDuration(dur)),
 			"conditionThreshold": dbMap{
 				"filter":         filter,
 				"aggregations":   []any{agg1},
 				"comparison":     "COMPARISON_GT",
-				"thresholdValue": 1,
+				"thresholdValue": regions - 1, // count of failing regions > n-1, i.e. at least n
 				"duration":       fmt.Sprintf("%ds", dur),
 				"trigger":        dbMap{"count": 1},
 			},
 		}
 		level := map[string]string{dbInstanceWarning: "early warning", dbInstanceCritical: "prolonged outage"}[inst]
-		doc := fmt.Sprintf("**Service down (%s).** An uptime check has been failing for %s (%d check(s) covered).\n\n"+
+		doc := fmt.Sprintf("**Service down (%s).** An uptime check has been failing from at least %d checker regions for %s (%d check(s) covered).\n\n"+
 			"What to check:\n- The endpoint from outside (curl the health URL) and the service/VM behind it.\n- Load balancer / DNS / TLS certificate state.\n- Recent deploys.\n\n"+
-			"This is the %s policy; cloud0 runs a \"warning\" (10 min) and a \"critical\" (2 h) policy per project.\n\n"+
+			"This is the %s policy; cloud0 runs a \"warning\" (30 min) and a \"critical\" (2 h) policy per project.\n\n"+
 			"Managed by cloud0 (template `%s`, instance `%s`); edit it from the Alerts tab, not in the console.",
-			level, dbHumanDuration(dur), len(ids), inst, TplUptimeDown, inst)
+			level, int(regions), dbHumanDuration(dur), len(ids), inst, TplUptimeDown, inst)
 		name := fmt.Sprintf("cloud0: %s (%s)", t.Title, dbHumanDuration(dur))
 		raw, err := dbPolicy(name, doc, p, ctx, TplUptimeDown, inst, cond)
 		return Built{Policy: raw}, err
